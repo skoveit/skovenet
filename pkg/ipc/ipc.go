@@ -5,14 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"os"
 	"strings"
 	"sync"
 
 	"nostaliga/pkg/logger"
 )
-
-const SocketPath = "/tmp/nostalgia-agent.sock"
 
 // Internal message format
 type message struct {
@@ -40,9 +37,7 @@ type AgentServer struct {
 }
 
 func NewAgentServer(handler CommandHandler) (*AgentServer, error) {
-	os.Remove(SocketPath)
-
-	listener, err := net.Listen("unix", SocketPath)
+	listener, err := CreateListener()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create socket: %w", err)
 	}
@@ -142,7 +137,7 @@ func (s *AgentServer) broadcast(msg message) {
 func (s *AgentServer) Stop() {
 	close(s.done)
 	s.listener.Close()
-	os.Remove(SocketPath)
+	CleanupSocket()
 	s.wg.Wait()
 }
 
@@ -165,11 +160,11 @@ type ControllerClient struct {
 }
 
 func NewControllerClient() (*ControllerClient, error) {
-	if _, err := os.Stat(SocketPath); err != nil {
+	if !SocketExists() {
 		return nil, fmt.Errorf("no agent running")
 	}
 
-	conn, err := net.Dial("unix", SocketPath)
+	conn, err := ConnectToAgent()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}

@@ -12,7 +12,7 @@ test*
 main
 
 # Binaries
-/bin/*
+/bin
 /bindgen
 /debug-*
 /docgen

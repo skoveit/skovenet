@@ -100,6 +100,7 @@ func main() {
 	})
 
 	// Start discovery
+	discovery.SuppressMDNSWarnings() // Suppress noisy Windows mDNS warnings
 	disc := discovery.NewMDNSDiscovery(n)
 	if err := disc.Start(); err != nil {
 		logger.Fatalf("Failed to start discovery: %v", err)
