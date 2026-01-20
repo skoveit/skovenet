@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"nostaliga/pkg/ipc"
-	"nostaliga/static"
+	"github.com/skoveit/skovenet/pkg/ipc"
+	"github.com/skoveit/skovenet/static"
 
 	"github.com/peterh/liner"
 )

@@ -13,20 +13,19 @@ echo "Building for Windows (amd64)..."
 # -w: Omit the DWARF symbol table
 # -H=windowsgui: (Optional) Hides the console window. Remove this if you want to see logs.
 # CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o bin/windows/agent.exe ./agent
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o bin/windows/agent.exe ./agent
-echo "Agent ✅"
 
-# Build Controller
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o bin/windows/controller.exe ./controller
-echo "Controller ✅"
+# CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o bin/windows/agent.exe ./agent
+# echo "Agent ✅"
 
-# Build Keygen
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o bin/windows/keygen.exe ./cmd/keygen
-echo "Keygen ✅"
+# # Build Controller
+# CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o bin/windows/controller.exe ./controller
+# echo "Controller ✅"
 
+# # Build Keygen
+# CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o bin/windows/keygen.exe ./cmd/keygen
+# echo "Keygen ✅"
 
-echo "Windows build complete! Binaries are in bin/windows/"
-
+# echo "Windows build complete! Binaries are in bin/windows/"
 
 echo "Building for Linux (amd64)..."
 

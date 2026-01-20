@@ -2,31 +2,16 @@
 
 ## Project Overview
 
-**PHOENIX** is a fully decentralized peer-to-peer (P2P) Command & Control (C2) system that eliminates the traditional single point of failure inherent in centralized C2 architectures. Unlike conventional C2 systems that rely on a central server or domain, PHOENIX operates as a self-healing mesh network where each agent (node) can communicate with any other agent through multi-hop routing.
+**SkoveNet** is a fully decentralized peer-to-peer (P2P) Command & Control (C2) system that eliminates the traditional single point of failure inherent in centralized C2 architectures. Unlike conventional C2 systems that rely on a central server or domain, SkoveNet operates as a self-healing mesh network where each agent (node) can communicate with any other agent through multi-hop routing.
 
 ### Core Philosophy
 
-Traditional C2 systems are vulnerable to takedown because they depend on a central server. PHOENIX inverts this model: **there is no server, no domain, no single point of failure**. The operator is simply whoever possesses the cryptographic secret key, and can issue commands from any node in the network.
+Traditional C2 systems are vulnerable to takedown because they depend on a central server. SkoveNet inverts this model: **there is no server, no domain, no single point of failure**. The operator is simply whoever possesses the cryptographic secret key, and can issue commands from any node in the network.
 
 ---
 
 ## Architecture
 
-### High-Level Components
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        PHOENIX Network                       │
-│                                                              │
-│  ┌──────┐    ┌──────┐    ┌──────┐    ┌──────┐    ┌──────┐ │
-│  │Agent │────│Agent │────│Agent │────│Agent │────│Agent │ │
-│  │  A   │    │  B   │    │  C   │    │  D   │    │  E   │ │
-│  └──────┘    └──────┘    └──────┘    └──────┘    └──────┘ │
-│     │           │           │           │           │      │
-│     └───────────┴───────────┴───────────┴───────────┘      │
-│                   Mesh Network (Max 5 peers each)          │
-└─────────────────────────────────────────────────────────────┘
-```
 
 ### System Components
 
@@ -351,7 +336,7 @@ Planned:
 
 #### Agent Mode (Default)
 ```bash
-./nostalgia
+./skovenet
 ```
 - Starts P2P node
 - Joins mesh network
@@ -360,7 +345,7 @@ Planned:
 
 #### Future: Operator Mode
 ```bash
-./nostalgia --operator --key secret.key
+./skovenet --operator --key secret.key
 ```
 - Load operator secret key
 - Sign all commands
@@ -450,7 +435,7 @@ routing:
 ### Code Organization
 
 ```
-nostalgia/
+skovenet/
 ├── cmd/
 │   └── agent/          # Main entry point
 │       └── main.go

@@ -12,12 +12,12 @@ import (
 	"syscall"
 	"time"
 
-	"nostaliga/pkg/command"
-	"nostaliga/pkg/discovery"
-	"nostaliga/pkg/ipc"
-	"nostaliga/pkg/logger"
-	"nostaliga/pkg/node"
-	"nostaliga/pkg/protocol"
+	"github.com/skoveit/skovenet/pkg/command"
+	"github.com/skoveit/skovenet/pkg/discovery"
+	"github.com/skoveit/skovenet/pkg/ipc"
+	"github.com/skoveit/skovenet/pkg/logger"
+	"github.com/skoveit/skovenet/pkg/node"
+	"github.com/skoveit/skovenet/pkg/protocol"
 )
 
 var (

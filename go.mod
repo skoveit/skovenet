@@ -1,4 +1,4 @@
-module nostaliga
+module github.com/skoveit/skovenet
 
 go 1.25.4
 

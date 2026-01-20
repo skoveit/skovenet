@@ -1,9 +1,9 @@
 package command
 
 import (
-	"nostaliga/pkg/logger"
-	"nostaliga/pkg/node"
-	"nostaliga/pkg/protocol"
+	"github.com/skoveit/skovenet/pkg/logger"
+	"github.com/skoveit/skovenet/pkg/node"
+	"github.com/skoveit/skovenet/pkg/protocol"
 )
 
 // ResponseCallback is called when a response is ready to be sent

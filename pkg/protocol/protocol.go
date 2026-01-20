@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"nostaliga/pkg/logger"
-	"nostaliga/pkg/node"
-	"nostaliga/pkg/pubsub"
+	"github.com/skoveit/skovenet/pkg/logger"
+	"github.com/skoveit/skovenet/pkg/node"
+	"github.com/skoveit/skovenet/pkg/pubsub"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"

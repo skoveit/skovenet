@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"nostaliga/pkg/logger"
+	"github.com/skoveit/skovenet/pkg/logger"
 )
 
 // Internal message format

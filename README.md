@@ -1,12 +1,12 @@
 
 **Traditional Command & Control (C2)** works exactly like a classic army: one central server (or domain) sits at the top, and every compromised machine (agent) phones home to it on a regular schedule to receive orders. This design is simple and fast, but it has a fatal weakness – it’s a single point of failure. As soon as defenders discover and block that one IP, domain, or server, the entire operation collapses instantly. Thousands of agents become blind and useless the moment their command center disappears.<br><br>
-PHOENIX throws that model away:
+SkoveNet throws that model away:
 ![structure diagram](static/structure_diagram.png)
 **No server. No domain. No single point of failure.** You can't kill what has no head.
 
-## Why PHOENIX is a Game Changer
+## Why SkoveNet is a Game Changer
 
-| Feature                        | Traditional C2 | PHOENIX                              |
+| Feature                        | Traditional C2 | SkoveNet                              |
 |--------------------------------|----------------|--------------------------------------|
 | Central server?                | Yes            | Never                                |
 | Killable by blocking 1 IP?     | Yes            | Impossible                           |
@@ -34,7 +34,7 @@ PHOENIX throws that model away:
 
 ## 🚧 Current Engineering Challenges & Limitations
 
-While **PHOENIX** achieves exceptional resilience by eliminating the traditional Single Point of Failure (SPoF), fully distributed systems come with their own dragons to tame. These are the major engineering fronts still under active development.
+While **SkoveNet** achieves exceptional resilience by eliminating the traditional Single Point of Failure (SPoF), fully distributed systems come with their own dragons to tame. These are the major engineering fronts still under active development.
 
 
 | Area | Summary of Problem | Current Status | Planned Improvement |

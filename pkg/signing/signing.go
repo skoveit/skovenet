@@ -11,7 +11,9 @@ import (
 // The corresponding private key is kept secret by the operator.
 var (
 	// Base64-encoded Ed25519 public key (32 bytes)
-	publicKeyB64 = "/dEyY8LHoQB01678XbaBPRoMNBaf974dzJeiLLecHXk="
+
+ 	// bwiw8lnoLuJPoElQC9tx7HfNj9QTk9+q1RwEeGQf32TMLZwZVtd/eVH8TASTWxcQTPJH83bA4x/VbYQN0n8Iww==
+	publicKeyB64 = "zC2cGVbXf3lR/EwEk1sXEEzyR/N2wOMf1W2EDdJ/CMM="
 
 	// Decoded public key (initialized once)
 	publicKey ed25519.PublicKey

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"nostaliga/pkg/logger"
+	"github.com/skoveit/skovenet/pkg/logger"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 )

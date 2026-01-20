@@ -5,8 +5,8 @@ import (
 	"crypto/rand"
 	"time"
 
-	"nostaliga/pkg/logger"
-	"nostaliga/pkg/node"
+	"github.com/skoveit/skovenet/pkg/logger"
+	"github.com/skoveit/skovenet/pkg/node"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"

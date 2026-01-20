@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-const SocketPath = "/tmp/nostalgia-agent.sock"
+const SocketPath = "/tmp/skovenet-agent.sock"
 
 // CreateListener creates a Unix domain socket listener
 func CreateListener() (net.Listener, error) {

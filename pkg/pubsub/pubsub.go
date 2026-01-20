@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"nostaliga/pkg/logger"
+	"github.com/skoveit/skovenet/pkg/logger"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"

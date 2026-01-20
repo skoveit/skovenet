@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"nostaliga/pkg/logger"
-	"nostaliga/pkg/pubsub"
+	"github.com/skoveit/skovenet/pkg/logger"
+	"github.com/skoveit/skovenet/pkg/pubsub"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
