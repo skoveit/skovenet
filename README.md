@@ -1,12 +1,14 @@
+Most C2 frameworks today rely on a Client-Server architecture. This creates a critical Single Point of Failure: if the Teamserver IP or Redirector domain is burned, the entire fleet of agents is lost.
 
-**Traditional Command & Control (C2)** works exactly like a classic army: one central server (or domain) sits at the top, and every compromised machine (agent) phones home to it on a regular schedule to receive orders. This design is simple and fast, but it has a fatal weakness – it’s a single point of failure. As soon as defenders discover and block that one IP, domain, or server, the entire operation collapses instantly. Thousands of agents become blind and useless the moment their command center disappears.<br><br>
-SkoveNet throws that model away:
+**SkoveNet** shifts the paradigm to a Gossip-based (Not-Full)Mesh Network. There is no central server. Every agent is a peer, and commands propagate through the network via cryptographically signed gossip.
+
+
 ![structure diagram](static/structure_diagram.png)
-**No server. No domain. No single point of failure.** You can't kill what has no head.
+**No server. No domain. No single point of failure.**
 
-## Why SkoveNet is a Game Changer
+## Architectural Comparison
 
-| Feature                        | Traditional C2 | SkoveNet                              |
+| Vector                         | Traditional C2 | SkoveNet                              |
 |--------------------------------|----------------|--------------------------------------|
 | Central server?                | Yes            | Never                                |
 | Killable by blocking 1 IP?     | Yes            | Impossible                           |
