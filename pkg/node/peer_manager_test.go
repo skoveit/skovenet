@@ -2,6 +2,7 @@ package node
 
 import (
 	"testing"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 )
@@ -145,25 +146,44 @@ func TestPeerManager_List(t *testing.T) {
 func TestPeerManager_Callback(t *testing.T) {
 	pm := NewPeerManager(5)
 
-	var events []struct {
+	type event struct {
 		id        string
 		connected bool
 	}
+	ch := make(chan event, 10)
 
 	pm.SetCallback(func(peerID string, connected bool) {
-		events = append(events, struct {
-			id        string
-			connected bool
-		}{peerID, connected})
+		ch <- event{peerID, connected}
 	})
 
-	pm.Add(peer.ID("peer-1"))
-	pm.Remove(peer.ID("peer-1"))
+	pid := peer.ID("peer-1")
+	expectedID := pid.String()
 
-	// Callbacks are fired in goroutines, give them a moment
-	// In tests this is near-instant since there's no real work
-	for i := 0; i < 100 && len(events) < 2; i++ {
-		// busy-wait briefly
-		_ = i
+	pm.Add(pid)
+	pm.Remove(pid)
+
+	// Collect both events (order may vary due to goroutine scheduling)
+	var gotConnect, gotDisconnect bool
+	for i := 0; i < 2; i++ {
+		select {
+		case e := <-ch:
+			if e.id != expectedID {
+				t.Errorf("unexpected peer ID: got %q, want %q", e.id, expectedID)
+			}
+			if e.connected {
+				gotConnect = true
+			} else {
+				gotDisconnect = true
+			}
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for callback")
+		}
+	}
+
+	if !gotConnect {
+		t.Error("missing connect callback")
+	}
+	if !gotDisconnect {
+		t.Error("missing disconnect callback")
 	}
 }
