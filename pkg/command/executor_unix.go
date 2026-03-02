@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -35,6 +36,19 @@ func (e *Executor) Execute(command string) (string, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
+
+	// Create a new process group so we can kill the shell AND all its children
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	// When context expires, kill the entire process group (not just the shell)
+	cmd.Cancel = func() error {
+		if cmd.Process != nil {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
+	// Give the process a moment to exit after being killed
+	cmd.WaitDelay = 2 * time.Second
 
 	// Use limited writers to cap output size
 	var stdout, stderr bytes.Buffer
