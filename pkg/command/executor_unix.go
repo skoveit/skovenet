@@ -4,8 +4,18 @@ package command
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"os/exec"
 	"strings"
+	"time"
+)
+
+const (
+	// ExecTimeout is the maximum time a command can run before being killed
+	ExecTimeout = 30 * time.Second
+	// MaxOutputSize is the maximum bytes captured from stdout+stderr (1 MB)
+	MaxOutputSize = 1 << 20
 )
 
 type Executor struct{}
@@ -20,12 +30,16 @@ func (e *Executor) Execute(command string) (string, error) {
 		return "", nil
 	}
 
-	// Run through shell for proper variable expansion, pipes, etc.
-	cmd := exec.Command("/bin/sh", "-c", command)
+	// Create context with timeout to prevent commands running forever
+	ctx, cancel := context.WithTimeout(context.Background(), ExecTimeout)
+	defer cancel()
 
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
+
+	// Use limited writers to cap output size
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	cmd.Stdout = &limitWriter{buf: &stdout, n: MaxOutputSize}
+	cmd.Stderr = &limitWriter{buf: &stderr, n: MaxOutputSize}
 
 	err := cmd.Run()
 
@@ -42,10 +56,38 @@ func (e *Executor) Execute(command string) (string, error) {
 
 	output = strings.TrimSpace(output)
 
+	// If the context deadline was exceeded, report it
+	if ctx.Err() == context.DeadlineExceeded {
+		output = fmt.Sprintf("[killed: exceeded %s timeout]\n%s", ExecTimeout, output)
+		return output, ctx.Err()
+	}
+
+	// Indicate if output was truncated
+	if stdout.Len() >= MaxOutputSize || stderr.Len() >= MaxOutputSize {
+		output += "\n[truncated: output exceeded 1MB limit]"
+	}
+
 	// If there was an error but no output, include the error message
 	if err != nil && output == "" {
 		output = err.Error()
 	}
 
 	return output, err
+}
+
+// limitWriter wraps a buffer and stops writing after n bytes
+type limitWriter struct {
+	buf *bytes.Buffer
+	n   int64
+}
+
+func (lw *limitWriter) Write(p []byte) (int, error) {
+	remaining := lw.n - int64(lw.buf.Len())
+	if remaining <= 0 {
+		return len(p), nil // silently discard
+	}
+	if int64(len(p)) > remaining {
+		p = p[:remaining]
+	}
+	return lw.buf.Write(p)
 }

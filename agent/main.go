@@ -115,9 +115,9 @@ func main() {
 		logger.Fatalf("Failed to start IPC: %v", err)
 	}
 
-	// Forward P2P responses to controller
-	cmdHandler.SetResponseCallback(func(source, payload string) {
-		server.Push(payload)
+	// Forward P2P responses to controller with command ID for correlation
+	cmdHandler.SetResponseCallback(func(source, payload, cmdID string) {
+		server.PushWithCmdID(payload, cmdID)
 	})
 
 	// Notify controller on peer changes

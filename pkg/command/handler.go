@@ -6,8 +6,9 @@ import (
 	"github.com/skoveit/skovenet/pkg/protocol"
 )
 
-// ResponseCallback is called when a response is ready to be sent
-type ResponseCallback func(source, payload string)
+// ResponseCallback is called when a response is ready to be sent.
+// Parameters: source peer ID, payload, originating command ID
+type ResponseCallback func(source, payload, cmdID string)
 
 type Handler struct {
 	node             *node.Node
@@ -34,10 +35,10 @@ func (h *Handler) SetResponseCallback(cb ResponseCallback) {
 
 func (h *Handler) Handle(msg *protocol.Message) error {
 	if msg.Type == protocol.MsgTypeResponse {
-		logger.Debug("✓ Response from: %s", msg.Source)
-		// Forward response to callback (for controller)
+		logger.Debug("✓ Response from: %s (cmd: %s)", msg.Source, msg.CmdID)
+		// Forward response to callback (for controller) with command ID
 		if h.responseCallback != nil {
-			h.responseCallback(msg.Source, msg.Payload)
+			h.responseCallback(msg.Source, msg.Payload, msg.CmdID)
 		}
 		return nil
 	}
@@ -51,7 +52,8 @@ func (h *Handler) Handle(msg *protocol.Message) error {
 	}
 
 	if h.protocol != nil {
-		h.protocol.SendResponse(msg.Source, output)
+		// Send response with the originating command's ID for correlation
+		h.protocol.SendResponseWithCmdID(msg.Source, output, msg.ID)
 	}
 	return nil
 }
