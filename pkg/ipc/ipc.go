@@ -16,6 +16,7 @@ type message struct {
 	Cmd      string   `json:"cmd"`
 	Args     []string `json:"args,omitempty"`
 	Response string   `json:"response,omitempty"`
+	CmdID    string   `json:"cmd_id,omitempty"` // Originating command ID for response correlation
 	IsAsync  bool     `json:"async,omitempty"`
 	Event    string   `json:"event,omitempty"` // peer_connected, peer_disconnected
 	Data     string   `json:"data,omitempty"`  // event data
@@ -117,6 +118,11 @@ func (s *AgentServer) Push(text string) {
 	s.broadcast(message{Response: text, IsAsync: true})
 }
 
+// PushWithCmdID sends async text to all controllers with a command ID for correlation
+func (s *AgentServer) PushWithCmdID(text, cmdID string) {
+	s.broadcast(message{Response: text, CmdID: cmdID, IsAsync: true})
+}
+
 // PushEvent sends an event notification to all controllers
 func (s *AgentServer) PushEvent(event, data string) {
 	s.broadcast(message{Event: event, Data: data, IsAsync: true})
@@ -150,11 +156,17 @@ type Event struct {
 	Data string // peer ID
 }
 
+// AsyncMessage carries a response with optional command ID for correlation
+type AsyncMessage struct {
+	Text  string // response text
+	CmdID string // originating command ID (may be empty)
+}
+
 type ControllerClient struct {
 	conn       net.Conn
 	reader     *bufio.Reader
 	responseCh chan string
-	asyncCh    chan string
+	asyncCh    chan AsyncMessage
 	eventCh    chan Event
 	mu         sync.Mutex
 }
@@ -173,7 +185,7 @@ func NewControllerClient() (*ControllerClient, error) {
 		conn:       conn,
 		reader:     bufio.NewReader(conn),
 		responseCh: make(chan string, 1),
-		asyncCh:    make(chan string, 100),
+		asyncCh:    make(chan AsyncMessage, 100),
 		eventCh:    make(chan Event, 100),
 	}
 
@@ -198,7 +210,7 @@ func (c *ControllerClient) readLoop() {
 		if msg.Event != "" {
 			c.eventCh <- Event{Type: msg.Event, Data: msg.Data}
 		} else if msg.IsAsync {
-			c.asyncCh <- msg.Response
+			c.asyncCh <- AsyncMessage{Text: msg.Response, CmdID: msg.CmdID}
 		} else {
 			c.responseCh <- msg.Response
 		}
@@ -219,9 +231,9 @@ func (c *ControllerClient) Send(cmd string, args ...string) (string, error) {
 	return resp, nil
 }
 
-func (c *ControllerClient) AsyncMessages() <-chan string { return c.asyncCh }
-func (c *ControllerClient) Events() <-chan Event         { return c.eventCh }
-func (c *ControllerClient) Close()                       { c.conn.Close() }
+func (c *ControllerClient) AsyncMessages() <-chan AsyncMessage { return c.asyncCh }
+func (c *ControllerClient) Events() <-chan Event               { return c.eventCh }
+func (c *ControllerClient) Close()                             { c.conn.Close() }
 
 // ============================================================================
 // HELPERS

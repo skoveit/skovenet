@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -30,6 +31,7 @@ func (mt MessageType) String() string {
 type Message struct {
 	Type      MessageType `json:"type"`
 	ID        string      `json:"id"`
+	CmdID     string      `json:"cmd_id,omitempty"` // ID of the originating command (for response correlation)
 	Source    string      `json:"source"`
 	Target    string      `json:"target"`
 	Payload   string      `json:"payload"`
@@ -117,6 +119,7 @@ func generateID() string {
 func randStr(n int) string {
 	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
 	b := make([]byte, n)
+	rand.Read(b)
 	for i := range b {
 		b[i] = chars[int(b[i])%len(chars)]
 	}

@@ -425,7 +425,16 @@ func refreshPeers() {
 
 func handleAsyncMessages() {
 	for msg := range client.AsyncMessages() {
-		fmt.Printf("\n%s\n", msg)
+		if msg.CmdID != "" {
+			// Show short command ID prefix for correlation
+			shortID := msg.CmdID
+			if len(shortID) > 10 {
+				shortID = shortID[len(shortID)-10:]
+			}
+			fmt.Printf("\n[cmd:%s] %s\n", shortID, msg.Text)
+		} else {
+			fmt.Printf("\n%s\n", msg.Text)
+		}
 	}
 }
 

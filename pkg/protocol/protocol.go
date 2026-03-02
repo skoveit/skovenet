@@ -337,6 +337,30 @@ func (p *Protocol) SendResponse(targetID, response string) {
 	p.Send(MsgTypeResponse, targetID, response)
 }
 
+// SendResponseWithCmdID sends a response that includes the originating command's ID
+// for correlation on the operator's side.
+func (p *Protocol) SendResponseWithCmdID(targetID, response, cmdID string) {
+	msg := NewMessage(MsgTypeResponse, p.node.ID().String(), targetID, response)
+	msg.CmdID = cmdID
+
+	// Try direct connection first
+	target, err := peer.Decode(targetID)
+	if err != nil {
+		logger.Debug("Invalid peer ID: %v", err)
+		return
+	}
+
+	if p.node.PeerManager().Has(target) {
+		if err := p.sendDirect(target, msg); err == nil {
+			logger.Debug("📤 response sent directly to %s (cmd: %s)", targetID, cmdID)
+			return
+		}
+	}
+
+	logger.Debug("📡 Broadcasting response via GossipSub to %s (cmd: %s)", targetID, cmdID)
+	p.publishMessage(msg)
+}
+
 // sendDirect sends a message directly to a peer via stream
 func (p *Protocol) sendDirect(target peer.ID, msg *Message) error {
 	ctx, cancel := context.WithTimeout(p.node.Context(), 5*time.Second)
