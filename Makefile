@@ -18,8 +18,8 @@ GO_VERSION   := 1.25.4
 # These can be overridden: make sgen HOST_OS=windows HOST_ARCH=amd64
 HOST_OS      ?= $(shell go env GOOS)
 HOST_ARCH    ?= $(shell go env GOARCH)
-
-GO_DL_URL    := https://go.dev/dl/go$(GO_VERSION).$(HOST_OS)-$(HOST_ARCH).tar.gz
+GO_DL_EXT    := $(if $(filter windows,$(HOST_OS)),zip,tar.gz)
+GO_DL_URL    := https://go.dev/dl/go$(GO_VERSION).$(HOST_OS)-$(HOST_ARCH).$(GO_DL_EXT)
 
 SGEN_ASSETS  := sgen/assets
 BIN_DIR      := bin
@@ -38,17 +38,17 @@ help: ## Show this help
 SGEN_BIN_NAME := sgen$(if $(filter windows,$(HOST_OS)),.exe,)
 SGEN_BIN_PATH := $(BIN_DIR)/$(HOST_OS)/$(SGEN_BIN_NAME)
 
-sgen: $(SGEN_ASSETS)/toolchain.tar.gz $(SGEN_ASSETS)/source.tar.gz ## Build sgen with embedded toolchain + source
+sgen: $(SGEN_ASSETS)/toolchain.$(GO_DL_EXT) $(SGEN_ASSETS)/source.tar.gz ## Build sgen with embedded toolchain + source
 	@mkdir -p $(BIN_DIR)/$(HOST_OS)
 	@echo "[*] Building sgen for $(HOST_OS)/$(HOST_ARCH)..."
 	CGO_ENABLED=0 GOOS=$(HOST_OS) GOARCH=$(HOST_ARCH) go build -ldflags="-s -w" -o $(SGEN_BIN_PATH) ./sgen
 	@echo "[✓] sgen built: $(SGEN_BIN_PATH)"
 
 # Download the Go toolchain for the host platform.
-$(SGEN_ASSETS)/toolchain.tar.gz:
+$(SGEN_ASSETS)/toolchain.$(GO_DL_EXT):
 	@mkdir -p $(SGEN_ASSETS)
 	@echo "[*] Downloading Go $(GO_VERSION) for $(HOST_OS)/$(HOST_ARCH)..."
-	curl -fSL -o $(SGEN_ASSETS)/toolchain.tar.gz "$(GO_DL_URL)"
+	curl -fSL -o $(SGEN_ASSETS)/toolchain.$(GO_DL_EXT) "$(GO_DL_URL)"
 	@echo "[✓] Toolchain downloaded"
 
 # Create a source archive with everything needed to build the agent.
@@ -79,6 +79,6 @@ controller: ## Build the controller
 
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR)
-	rm -rf $(SGEN_ASSETS)/toolchain.tar.gz
+	rm -rf $(SGEN_ASSETS)/toolchain.*
 	rm -rf $(SGEN_ASSETS)/source.tar.gz
 	rm -rf vendor/
