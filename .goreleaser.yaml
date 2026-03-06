@@ -1,0 +1,50 @@
+version: 2
+project_name: skovenet
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  # Agent is no longer released as a standalone binary.
+  # It is generated at runtime by sgen with the operator's public key.
+
+  - id: controller
+    main: ./controller
+    binary: controller
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+  # sgen is built via `make sgen` in the release workflow, not by GoReleaser,
+  # because it requires a two-phase build (download toolchain → vendor → embed → build).
+  # The release workflow attaches sgen binaries to the GitHub release separately.
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"

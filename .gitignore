@@ -23,8 +23,7 @@ docs/
 /jsdocgen
 /memogen
 
-# Templates
-/*.yaml
+
 
 # Generated docs
 /dsl.md
@@ -35,3 +34,7 @@ docs/
 *.trace
 *.mem
 *.cpu
+
+# sgen build artifacts
+sgen/assets/*.tar.gz
+vendor/

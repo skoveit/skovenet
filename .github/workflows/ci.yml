@@ -16,11 +16,31 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build
-        run: go build ./...
+      - name: Build controller
+        run: CGO_ENABLED=0 go build -ldflags="-s -w" ./controller
+
+      - name: Build agent
+        run: CGO_ENABLED=0 go build -ldflags="-s -w" ./agent
 
       - name: Test (fast)
         run: go test -v -count=1 -race -short ./pkg/...
 
       - name: Test (timeout)
         run: go test -v -count=1 -run TestExecute_Timeout ./pkg/command/
+
+  build-sgen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build sgen
+        run: make sgen
+
+      - name: Verify sgen
+        run: |
+          ./bin/linux/sgen version
+          ./bin/linux/sgen list
