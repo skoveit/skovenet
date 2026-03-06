@@ -36,5 +36,6 @@ docs/
 *.cpu
 
 # sgen build artifacts
-sgen/assets/*.tar.gz
+*.tar.gz
+*.zip
 vendor/

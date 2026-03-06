@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"fmt"
@@ -70,8 +71,28 @@ func ensureToolchain() error {
 	}
 
 	fmt.Println("[*] Extracting Go toolchain (first run, this may take a moment)...")
-	if err := extractTarGz(toolchainArchive, tcDir); err != nil {
-		return fmt.Errorf("toolchain extraction failed: %w", err)
+
+	// Determine which toolchain archive was embedded.
+	var archive []byte
+	var isZip bool
+	archive, err = toolchainFS.ReadFile("assets/toolchain.zip")
+	if err == nil {
+		isZip = true
+	} else {
+		archive, err = toolchainFS.ReadFile("assets/toolchain.tar.gz")
+		if err != nil {
+			return fmt.Errorf("embedded toolchain archive not found (.zip or .tar.gz)")
+		}
+	}
+
+	if isZip {
+		if err := extractZip(archive, tcDir); err != nil {
+			return fmt.Errorf("toolchain zip extraction failed: %w", err)
+		}
+	} else {
+		if err := extractTarGz(archive, tcDir); err != nil {
+			return fmt.Errorf("toolchain tar.gz extraction failed: %w", err)
+		}
 	}
 
 	// Verify the binary exists after extraction.
@@ -142,6 +163,59 @@ func extractTarGz(archive []byte, destDir string) error {
 			if err := os.Symlink(hdr.Linkname, target); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// extractZip extracts a zip archive into destDir.
+// Sanitizes paths to prevent directory traversal.
+func extractZip(archive []byte, destDir string) error {
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return err
+	}
+
+	zr, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
+	if err != nil {
+		return fmt.Errorf("invalid zip archive: %w", err)
+	}
+
+	for _, f := range zr.File {
+		// Sanitize: prevent directory traversal.
+		cleanName := filepath.Clean(f.Name)
+		if strings.HasPrefix(cleanName, "..") {
+			continue
+		}
+		target := filepath.Join(destDir, cleanName)
+
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, f.Mode()|0o755); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+
+		dst, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, f.Mode())
+		if err != nil {
+			rc.Close()
+			return err
+		}
+
+		_, copyErr := io.Copy(dst, rc)
+		dst.Close()
+		rc.Close()
+
+		if copyErr != nil {
+			return copyErr
 		}
 	}
 	return nil
