@@ -34,7 +34,7 @@ builds:
 archives:
   - format: tar.gz
     name_template: >-
-      {{ .ProjectName }}_{{ .Os }}_{{ .Arch }}
+      controller_{{ .Os }}_{{ .Arch }}
     format_overrides:
       - goos: windows
         format: zip
