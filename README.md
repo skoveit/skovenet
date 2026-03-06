@@ -58,12 +58,6 @@ make controller
 
 # Generate a Windows agent with an existing key
 ./sgen generate --os windows --arch amd64 --key "base64pubkey..."
-
-# Generate for macOS ARM (Apple Silicon)
-./sgen generate --os darwin --arch arm64
-
-# Generate a keypair without building an agent
-./sgen keygen
 ```
 
 ### Running
@@ -76,7 +70,7 @@ make controller
 
 **Operator machine:**
 ```bash
-# join the network
+# join the network 
 ./agent-linux-amd64
 
 # connect to the local agent via IPC

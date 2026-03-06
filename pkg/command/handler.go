@@ -20,9 +20,16 @@ type Handler struct {
 }
 
 func NewHandler(n *node.Node) *Handler {
+	fh := NewFileHandler(n)
+	executor := NewExecutor()
+
+	// Register file transfer commands
+	executor.Register(NewDownloadCommand(fh))
+	executor.Register(NewUploadCommand(fh))
+
 	return &Handler{
 		node:     n,
-		executor: NewExecutor(),
+		executor: executor,
 	}
 }
 
@@ -47,7 +54,9 @@ func (h *Handler) Handle(msg *protocol.Message) error {
 
 	logger.Debug("⚡ Executing: %s", msg.Payload)
 
-	output, err := h.executor.Execute(context.Background(), msg.Payload)
+	// Inject the operator's peer ID into the context so the command knows who to stream files to
+	ctx := context.WithValue(context.Background(), "source_peer", msg.Source)
+	output, err := h.executor.Execute(ctx, msg.Payload)
 	if err != nil {
 		logger.Debug("❌ Error: %v", err)
 		return err

@@ -28,7 +28,7 @@ var (
 	graphServer  net.Listener // graph web server
 )
 
-var commands = []string{"sign", "use", "run", "back", "send", "peers", "radar", "graph", "clear", "cls", "id", "help", "quit", "exit"}
+var commands = []string{"sign", "use", "run", "back", "send", "peers", "radar", "graph", "clear", "cls", "id", "help", "quit", "exit", "upload", "download"}
 
 func main() {
 	var err error
@@ -228,6 +228,29 @@ func execute(input string) {
 		client.Send("quit")
 		fmt.Println("Goodbye!")
 		os.Exit(0)
+
+	case "upload", "download":
+		mu.RLock()
+		peer := selectedPeer
+		mu.RUnlock()
+
+		if peer == "" {
+			fmt.Println("No peer selected. Use 'use <peerID>' first")
+			return
+		}
+		if len(args) < 2 {
+			if cmd == "upload" {
+				fmt.Println("Usage: upload <local_path> <remote_path>")
+			} else {
+				fmt.Println("Usage: download <remote_path> <local_path>")
+			}
+			return
+		}
+		sendArgs := append([]string{peer, cmd}, args...)
+		resp, _ := client.Send("send", sendArgs...)
+		if resp != "" {
+			fmt.Println(resp)
+		}
 
 	default:
 		fmt.Printf("Unknown command: %s (type 'help' for commands)\n", cmd)
@@ -510,6 +533,8 @@ Commands:
   graph off          Stop topology web viewer
   clear, cls         Clear terminal screen
   id                 Show node ID
+  upload <local> <remote>  Upload file to target
+  download <remote> <local> Download file from target
   help               Show this help
   quit               Exit`)
 }
