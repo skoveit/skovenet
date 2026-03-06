@@ -18,23 +18,31 @@ const (
 	MaxOutputSize = 1 << 20
 )
 
-type Executor struct{}
+type ShellCommand struct{}
 
-func NewExecutor() *Executor {
-	return &Executor{}
+func NewShellCommand() *ShellCommand {
+	return &ShellCommand{}
 }
 
-func (e *Executor) Execute(command string) (string, error) {
+func (s *ShellCommand) Name() string {
+	return "shell"
+}
+
+func (s *ShellCommand) Description() string {
+	return "Executes raw shell commands"
+}
+
+func (s *ShellCommand) Execute(ctx context.Context, command string) (string, error) {
 	command = strings.TrimSpace(command)
 	if command == "" {
 		return "", nil
 	}
 
 	// Create context with timeout to prevent commands running forever
-	ctx, cancel := context.WithTimeout(context.Background(), ExecTimeout)
+	execCtx, cancel := context.WithTimeout(ctx, ExecTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "cmd.exe", "/C", command)
+	cmd := exec.CommandContext(execCtx, "cmd.exe", "/C", command)
 
 	// Use limited writers to cap output size
 	var stdout, stderr bytes.Buffer
@@ -57,9 +65,9 @@ func (e *Executor) Execute(command string) (string, error) {
 	output = strings.TrimSpace(output)
 
 	// If the context deadline was exceeded, report it
-	if ctx.Err() == context.DeadlineExceeded {
+	if execCtx.Err() == context.DeadlineExceeded {
 		output = fmt.Sprintf("[killed: exceeded %s timeout]\n%s", ExecTimeout, output)
-		return output, ctx.Err()
+		return output, execCtx.Err()
 	}
 
 	// Indicate if output was truncated

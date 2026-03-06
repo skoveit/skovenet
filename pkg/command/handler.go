@@ -1,6 +1,8 @@
 package command
 
 import (
+	"context"
+
 	"github.com/skoveit/skovenet/pkg/logger"
 	"github.com/skoveit/skovenet/pkg/node"
 	"github.com/skoveit/skovenet/pkg/protocol"
@@ -45,7 +47,7 @@ func (h *Handler) Handle(msg *protocol.Message) error {
 
 	logger.Debug("⚡ Executing: %s", msg.Payload)
 
-	output, err := h.executor.Execute(msg.Payload)
+	output, err := h.executor.Execute(context.Background(), msg.Payload)
 	if err != nil {
 		logger.Debug("❌ Error: %v", err)
 		return err
