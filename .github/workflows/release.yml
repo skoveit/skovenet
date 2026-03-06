@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # Build sgen separately because it needs the two-phase Makefile pipeline.
+  # GoReleaser handles controller only.
+  build-sgen:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+          - os: ubuntu-latest
+            goos: windows
+            goarch: amd64
+          - os: ubuntu-latest
+            goos: windows
+            goarch: 386
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build sgen
+        run: make sgen HOST_OS=${{ matrix.goos }} HOST_ARCH=${{ matrix.goarch }}
+
+      - name: Rename binary
+        run: |
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            mv bin/${{ matrix.goos }}/sgen.exe bin/sgen-${{ matrix.goos }}-${{ matrix.goarch }}.exe
+          else
+            mv bin/${{ matrix.goos }}/sgen bin/sgen-${{ matrix.goos }}-${{ matrix.goarch }}
+          fi
+
+      - name: Upload sgen artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sgen-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: bin/sgen-${{ matrix.goos }}-${{ matrix.goarch }}*
+
+  release:
+    needs: build-sgen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Download all sgen artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: sgen-binaries/
+          merge-multiple: true
+
+      - name: Run GoReleaser (controller only)
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attach sgen binaries to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sgen-binaries/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
