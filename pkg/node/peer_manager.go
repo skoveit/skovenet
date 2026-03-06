@@ -96,3 +96,7 @@ func (pm *PeerManager) List() []peer.ID {
 	}
 	return peers
 }
+
+func (pm *PeerManager) ParsePeer(peerID string) (peer.ID, error) {
+	return peer.Decode(peerID)
+}

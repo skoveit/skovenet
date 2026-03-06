@@ -240,7 +240,42 @@ func (c *ControllerClient) Close()                             { c.conn.Close() 
 // ============================================================================
 
 func ParseInput(input string) (cmd string, args []string) {
-	parts := strings.Fields(input)
+	if input == "" {
+		return "", nil
+	}
+
+	var parts []string
+	var current strings.Builder
+	inQuotes := false
+	quoteChar := rune(0)
+
+	runes := []rune(input)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		if inQuotes {
+			if r == quoteChar {
+				inQuotes = false
+			} else {
+				current.WriteRune(r)
+			}
+		} else {
+			if r == '"' || r == '\'' {
+				inQuotes = true
+				quoteChar = r
+			} else if r == ' ' || r == '\t' {
+				if current.Len() > 0 {
+					parts = append(parts, current.String())
+					current.Reset()
+				}
+			} else {
+				current.WriteRune(r)
+			}
+		}
+	}
+	if current.Len() > 0 {
+		parts = append(parts, current.String())
+	}
+
 	if len(parts) == 0 {
 		return "", nil
 	}
