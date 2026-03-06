@@ -1,16 +1,25 @@
 
+[![Release](https://github.com/skoveit/skovenet/actions/workflows/release.yml/badge.svg)](https://github.com/skoveit/skovenet/actions/workflows/release.yml) [![Go Report Card](https://goreportcard.com/badge/github.com/skoveit/skovenet)](https://goreportcard.com/report/github.com/skoveit/skovenet) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
+![xxn](static/banner.jpg)
+
+---
+
 **SkoveNet** is a decentralized Command & Control (C2) framework engineered to eliminate Single Points of Failure and ensure maximum operator anonymity.
 
-Unlike traditional client-server C2 models, SkoveNet implements a decoupled Agent-Controller architecture. This allows the operator to interface with the network through any active node, removing the dependency on a static command center and obfuscating the operator's physical location.
+Unlike client-server C2 models, SkoveNet implements a decoupled Agent-Controller architecture. This allows the operator to interface with the network through any active node, removing the dependency on a static command center and obfuscating the operator's physical location.
 
-![structure diagram](static/structure_diagram.png)
-**No server. No domain. No single point of failure.**
+<p align="center">
+  <img src="static/structure_diagram.png" alt="structure diagram" />
+  <br>
+  <b>No single point of failure</b>
+</p>
 
 
 ## Core Features
 - Fully decentralized P2P mesh network
-- Max 5 neighbors per agent → tiny traffic footprint
 - Automatic self-healing topology
+- Max 5 neighbors per agent → tiny traffic footprint
 - Operator = whoever has the cryptographic secret key
 - Commands signed with Ed25519 → no spoofing
 - End-to-end encrypted (Noise protocol)
@@ -19,15 +28,15 @@ Unlike traditional client-server C2 models, SkoveNet implements a decoupled Agen
 - NAT traversal & hole punching built-in
 - **`sgen`** — standalone agent generator (no Go toolchain required)
 
-## Architecture
 
-| Vector                         | Traditional C2 | SkoveNet                          |
-| ------------------------------ | -------------- | --------------------------------- |
-| Central server?                | Yes            | Never                             |
-| Killable by blocking 1 IP?     | Yes            | Impossible                        |
-| Operator has fixed location?   | Yes            | No – any node with the secret key |
-| Network dies when nodes drop?  | Yes            | No – self-healing graph           |
-| Command authenticity           | Server cert    | Ed25519-signed by secret key      |
+## The Paradigm Shift
+
+Traditional C2 frameworks rely on static, centralized infrastructure. SkoveNet shifts the operational security (OpSec) model entirely to an unstructured peer-to-peer mesh:
+
+- **Infrastructure-less Control:** No teamservers, no redirectors, and no domains to seize. The network itself is the infrastructure.
+- **Cryptographic Trust Model:** Commands are authenticated via Ed25519 signatures rather than network location or TLS certificates. The operator is simply whoever holds the private key.
+- **Self-Healing Topology:** If nodes are discovered or burned by blue teams, the routing graph dynamically recalculates to maintain command flow.
+- **Zero-Attribution:** By propagating commands through GossipSub, the concept of an "origin IP" is eradicated, making upstream operator tracing practically unfeasible.
 
 ## Components
 
@@ -37,9 +46,13 @@ Unlike traditional client-server C2 models, SkoveNet implements a decoupled Agen
 | **controller** | Operator CLI — connects to the local agent via IPC   |
 | **sgen**       | Standalone agent generator — no Go toolchain needed   |
 
-## Usage
+## Installation
 
-### Building
+The easiest way to get started is to download the pre-compiled binaries for the **Controller** and **sgen** from the [GitHub Releases](https://github.com/skoveit/skovenet/releases) page.
+
+Alternatively, you can build them from source:
+
+### Building from Source
 
 ```bash
 # Build sgen (the agent generator)
@@ -53,39 +66,47 @@ make controller
 
 ```bash
 # Generate a Linux agent (auto-creates a new keypair)
-./bin/sgen generate --os linux --arch amd64
+./sgen generate --os linux --arch amd64
 
 # Generate a Windows agent with an existing key
-./bin/sgen generate --os windows --arch amd64 --key "base64pubkey..."
+./sgen generate --os windows --arch amd64 --key "base64pubkey..."
 
 # Generate for macOS ARM (Apple Silicon)
-./bin/sgen generate --os darwin --arch arm64
+./sgen generate --os darwin --arch arm64
 
 # List all supported platforms
-./bin/sgen list
+./sgen list
 
 # Generate a keypair without building an agent
-./bin/sgen keygen
+./sgen keygen
 ```
 
 `sgen` is a self-contained binary that embeds a Go toolchain and the agent source code. It produces fully-configured agent binaries for any supported platform — no Go compiler or build tools required on the operator's machine.
 
 ### Running
 
+**Target machine:**
 ```bash
-# Start the agent (on target machine)
-./agent
+# join the network (this is the binary output by sgen)
+./agent-linux-amd64
+```
 
-# Connect with the controller (on operator machine)
+**Operator machine:**
+```bash
+# join the network
+./agent-linux-amd64
+
+# connect to the local agent via IPC
 ./controller
-
-# Inside the controller:
-sign <private_key>        # Authenticate as operator
-peers                     # List connected nodes
-use <peerID>              # Select a target node
-run whoami                # Execute command on target
-radar                     # Scan for all network nodes
-graph on                  # Open topology web viewer
+```
+**Inside the controller:**
+```bash
+> sign <private_key>        # Authenticate as operator
+> peers                     # List connected nodes
+> use <peerID>              # Select a target node
+> run whoami                # Execute command on target
+> radar                     # Scan for all network nodes
+> graph on                  # Open topology web viewer
 ```
 
 ## Engineering Challenge: NAT Traversal
