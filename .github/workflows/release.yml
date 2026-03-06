@@ -72,14 +72,14 @@ jobs:
       - name: Download all sgen artifacts
         uses: actions/download-artifact@v4
         with:
-          path: sgen-binaries/
+          path: /tmp/sgen-binaries/
           merge-multiple: true
 
       - name: Run GoReleaser (controller only)
-        uses: goreleaser/goreleaser-action@v5
+        uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
-          version: latest
+          version: '~> v2'
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -87,6 +87,6 @@ jobs:
       - name: Attach sgen binaries to release
         uses: softprops/action-gh-release@v2
         with:
-          files: sgen-binaries/*
+          files: /tmp/sgen-binaries/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
