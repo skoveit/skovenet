@@ -1,6 +1,6 @@
 The core philosophy of **SkoveNet** is to maintain absolute stealth and operational integrity. To achieve this, we prioritize the robustness of our System Architecture and Decentralized Communication Flows above all else.
 
-We encourage rigorous audits focusing on P2P Architectural Flaws, Logic Flow Vulnerabilities (Authentication Bypasses/Implant Hijacking), and any System Integrity issues that could compromise the framework's "invisible" nature.
+We encourage rigorous audits focusing on P2P Architectural Flaws, Logic Flow Vulnerabilities (Authentication Bypasses/Implant Hijacking), and any System Integrity issues that could compromise the framework.
 
 ### Bug Bounty
 
