@@ -22,8 +22,6 @@ var supportedPlatforms = []struct {
 	{"darwin", "amd64"},
 	{"darwin", "arm64"},
 	{"windows", "amd64"},
-	{"windows", "arm64"},
-	{"windows", "386"},
 }
 
 // BuildConfig holds everything needed to generate an agent binary.
