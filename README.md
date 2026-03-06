@@ -88,14 +88,6 @@ radar                     # Scan for all network nodes
 graph on                  # Open topology web viewer
 ```
 
-### Supported Platforms
-
-| OS      | Architectures             |
-| ------- | ------------------------- |
-| Linux   | amd64, arm64, 386, arm    |
-| Windows | amd64, arm64, 386         |
-| macOS   | amd64, arm64              |
-
 ## Engineering Challenge: NAT Traversal
 While SkoveNet's decentralized architecture eliminates the traditional Single Point of Failure (SPoF), operating within restricted corporate networks presents a significant hurdle. Standard P2P hole-punching often fails against **Symmetric NATs** and aggressive firewalls that block non-standard egress traffic.
 

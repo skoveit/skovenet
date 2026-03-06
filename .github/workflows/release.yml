@@ -30,9 +30,6 @@ jobs:
           - os: ubuntu-latest
             goos: windows
             goarch: amd64
-          - os: ubuntu-latest
-            goos: windows
-            goarch: 386
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
