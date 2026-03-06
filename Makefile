@@ -38,6 +38,9 @@ help: ## Show this help
 SGEN_BIN_NAME := sgen$(if $(filter windows,$(HOST_OS)),.exe,)
 SGEN_BIN_PATH := $(BIN_DIR)/$(HOST_OS)/$(SGEN_BIN_NAME)
 
+CTRL_BIN_NAME := controller$(if $(filter windows,$(HOST_OS)),.exe,)
+CTRL_BIN_PATH := $(BIN_DIR)/$(HOST_OS)/$(CTRL_BIN_NAME)
+
 sgen: $(SGEN_ASSETS)/toolchain.$(GO_DL_EXT) $(SGEN_ASSETS)/source.tar.gz ## Build sgen with embedded toolchain + source
 	@mkdir -p $(BIN_DIR)/$(HOST_OS)
 	@echo "[*] Building sgen for $(HOST_OS)/$(HOST_ARCH)..."
@@ -70,8 +73,10 @@ vendor: go.mod go.sum
 # ──────────────────────────────────────────────────────────────
 
 controller: ## Build the controller
-	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BIN_DIR)/controller ./controller
+	@mkdir -p $(BIN_DIR)/$(HOST_OS)
+	@echo "[*] Building controller for $(HOST_OS)/$(HOST_ARCH)..."
+	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(CTRL_BIN_PATH) ./controller
+	@echo "[✓] controller built: $(CTRL_BIN_PATH)"
 
 # ──────────────────────────────────────────────────────────────
 # Cleanup
