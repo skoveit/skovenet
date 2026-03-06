@@ -28,16 +28,6 @@ Unlike client-server C2 models, SkoveNet implements a decoupled Agent-Controller
 - NAT traversal & hole punching built-in
 - **`sgen`** — standalone agent generator (no Go toolchain required)
 
-
-## The Paradigm Shift
-
-Traditional C2 frameworks rely on static, centralized infrastructure. SkoveNet shifts the operational security (OpSec) model entirely to an unstructured peer-to-peer mesh:
-
-- **Infrastructure-less Control:** No teamservers, no redirectors, and no domains to seize. The network itself is the infrastructure.
-- **Cryptographic Trust Model:** Commands are authenticated via Ed25519 signatures rather than network location or TLS certificates. The operator is simply whoever holds the private key.
-- **Self-Healing Topology:** If nodes are discovered or burned by blue teams, the routing graph dynamically recalculates to maintain command flow.
-- **Zero-Attribution:** By propagating commands through GossipSub, the concept of an "origin IP" is eradicated, making upstream operator tracing practically unfeasible.
-
 ## Components
 
 | Binary         | Purpose                                              |
@@ -46,7 +36,7 @@ Traditional C2 frameworks rely on static, centralized infrastructure. SkoveNet s
 | **controller** | Operator CLI — connects to the local agent via IPC   |
 | **sgen**       | Standalone agent generator — no Go toolchain needed   |
 
-## Installation
+## Quick Start
 
 The easiest way to get started is to download the pre-compiled binaries for the **Controller** and **sgen** from the [GitHub Releases](https://github.com/skoveit/skovenet/releases) page.
 
@@ -55,10 +45,8 @@ Alternatively, you can build them from source:
 ### Building from Source
 
 ```bash
-# Build sgen (the agent generator)
+# Requires Go 1.25+ 
 make sgen
-
-# Build the controller
 make controller
 ```
 
@@ -74,14 +62,9 @@ make controller
 # Generate for macOS ARM (Apple Silicon)
 ./sgen generate --os darwin --arch arm64
 
-# List all supported platforms
-./sgen list
-
 # Generate a keypair without building an agent
 ./sgen keygen
 ```
-
-`sgen` is a self-contained binary that embeds a Go toolchain and the agent source code. It produces fully-configured agent binaries for any supported platform — no Go compiler or build tools required on the operator's machine.
 
 ### Running
 
@@ -109,6 +92,17 @@ make controller
 > graph on                  # Open topology web viewer
 ```
 
+
+## The Paradigm Shift
+
+Traditional C2 frameworks rely on static, centralized infrastructure. SkoveNet shifts the operational security (OpSec) model entirely to an unstructured peer-to-peer mesh:
+
+- **Infrastructure-less Control:** No teamservers, no redirectors, and no domains to seize. The network itself is the infrastructure.
+- **Cryptographic Trust Model:** Commands are authenticated via Ed25519 signatures rather than network location or TLS certificates. The operator is simply whoever holds the private key.
+- **Self-Healing Topology:** If nodes are discovered or burned by blue teams, the routing graph dynamically recalculates to maintain command flow.
+- **Zero-Attribution:** By propagating commands through GossipSub, the concept of an "origin IP" is eradicated, making upstream operator tracing practically unfeasible.
+
+
 ## Engineering Challenge: NAT Traversal
 While SkoveNet's decentralized architecture eliminates the traditional Single Point of Failure (SPoF), operating within restricted corporate networks presents a significant hurdle. Standard P2P hole-punching often fails against **Symmetric NATs** and aggressive firewalls that block non-standard egress traffic.
 
@@ -116,8 +110,14 @@ Currently, the framework requires manual **Bootstrap/Relay nodes** (`connect` co
 
 We are actively researching the integration of **STUN/TURN** protocols and **DNS-over-HTTPS (DoH)** tunneling to enhance NAT traversal and ensure resilient peer discovery without relying on static relay infrastructure.
 
-## Roadmap
+## Roadmap [WIP]
 - **Traffic Evasion:** Implement pluggable transports (WebSockets, DNS, ICMP) to mask raw libp2p signatures.
 - **Obfuscation:** Integrate `garble` into sgen for compile-time obfuscation of generated agents.
 - **Dynamic Key Management:** Move from static Ed25519 to a rotating CA model or JWT-based session tokens.
 - **Feature Toggles:** Build-tag support in sgen for conditional compilation (`--tags stealth`).
+
+##
+
+> ⚠️ **Legal Disclaimer:** SkoveNet is intended for 
+> authorized security research and penetration testing only.
+> Unauthorized use against systems you don't own is illegal.
