@@ -1,7 +1,7 @@
 
 [![Release](https://github.com/skoveit/skovenet/actions/workflows/release.yml/badge.svg)](https://github.com/skoveit/skovenet/actions/workflows/release.yml) [![Go Report Card](https://goreportcard.com/badge/github.com/skoveit/skovenet)](https://goreportcard.com/report/github.com/skoveit/skovenet) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-![xxn](static/banner.jpg)
+![banner](static/banner.jpg)
 
 ---
 
@@ -15,7 +15,6 @@ Unlike client-server C2 models, SkoveNet implements a decoupled Agent-Controller
   <b>No single point of failure</b>
 </p>
 
-
 ## Core Features
 - Fully decentralized P2P mesh network
 - Automatic self-healing topology
@@ -27,6 +26,16 @@ Unlike client-server C2 models, SkoveNet implements a decoupled Agent-Controller
 - Single binary, zero dependencies – works on Windows, Linux, macOS, ARM
 - NAT traversal & hole punching built-in
 - **`sgen`** — standalone agent generator (no Go toolchain required)
+
+
+
+## How It Works
+Every machine in the network runs an **agent**. The agent is the network. it connects to peers, receives commands, and executes them. The **controller** is just a local CLI that talks to the agent running on your machine. It's how you, the operator, interact with the network. If you are not on the network yet, run **agent** to join, then run **controller**.
+
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/5f2961b9-461d-4824-9ad4-2f22753b7614" width="600" />
+</p>
 
 ## Components
 
@@ -87,6 +96,7 @@ make controller
 > graph on                  # Open topology web viewer
 ```
 
+Visit https://skoveit.github.io/skoving/projects/skovenet/ for tutorials and documentation.
 
 ## The Paradigm Shift
 
