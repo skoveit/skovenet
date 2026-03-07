@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+
+	"github.com/skoveit/skovenet/pkg/banner"
 )
 
-const version = "1.0.0"
+const version = "1.1.0"
 
 func main() {
+	banner.Print()
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
@@ -102,8 +105,6 @@ func cmdGenerate() {
 		}
 	}
 
-	printBanner()
-
 	cfg := &BuildConfig{
 		OS:         targetOS,
 		Arch:       targetArch,
@@ -141,15 +142,6 @@ func cmdList() {
 
 func cmdVersion() {
 	fmt.Printf("sgen v%s (%s/%s)\n", version, runtime.GOOS, runtime.GOARCH)
-}
-
-func printBanner() {
-	fmt.Println("  ┌──────────────────────────────────────┐")
-	fmt.Println("  │         sgen · SkoveNet Agent        │")
-	fmt.Println("  │              Generator               │")
-	fmt.Printf("  │             v%-24s│\n", version)
-	fmt.Println("  └──────────────────────────────────────┘")
-	fmt.Println()
 }
 
 func printUsage() {

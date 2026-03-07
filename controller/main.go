@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/skoveit/skovenet/pkg/banner"
 	"github.com/skoveit/skovenet/pkg/ipc"
 	"github.com/skoveit/skovenet/static"
 
@@ -32,6 +33,7 @@ var globalCommands = []string{"sign", "use", "peers", "radar", "graph", "clear",
 var peerCommands = []string{"ls", "cd", "pwd", "ps", "info", "upload", "download", "background", "back", "help", "clear", "cls"}
 
 func main() {
+	banner.Print()
 	var err error
 	client, err = ipc.NewControllerClient()
 	if err != nil {

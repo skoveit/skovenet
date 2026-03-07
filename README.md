@@ -81,7 +81,8 @@ make controller
 > sign <private_key>        # Authenticate as operator
 > peers                     # List connected nodes
 > use <peerID>              # Select a target node
-> run whoami                # Execute command on target
+[peerID]> whoami            # Run any shell command directly
+[peerID]> background        # Return to global view
 > radar                     # Scan for all network nodes
 > graph on                  # Open topology web viewer
 ```

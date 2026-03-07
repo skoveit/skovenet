@@ -22,7 +22,6 @@
 ## Phase 3: Core C2 Capabilities
 *Focus: Adding the essential tools every operator needs.*
 
-- **File Transfer**: `upload` and `download` commands with chunking and integrity checks.
 - **Persistent Persistence**: Automated installers for Linux (systemd) and Windows (Registry/Tasks).
 - **Interactive Shell**: Optimization for low-latency command execution.
 - **Process Management**: Commands to list, kill, and spawn processes with resource tracking.
