@@ -11,6 +11,7 @@
 test* 
 main
 docs/ 
+docs
 
 # Binaries
 /bin
