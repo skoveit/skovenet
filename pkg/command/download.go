@@ -65,5 +65,5 @@ func (c *DownloadCommand) Execute(ctx context.Context, rawArgs string) (string, 
 		return "", fmt.Errorf("failed during file transfer: %w", err)
 	}
 
-	return fmt.Sprintf("✅ Download complete: %d bytes transferred to %s", copied, localPath), nil
+	return fmt.Sprintf("Download complete: %d bytes transferred to %s", copied, localPath), nil
 }

