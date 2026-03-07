@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/skoveit/skovenet/pkg/logger"
 )
@@ -163,12 +164,13 @@ type AsyncMessage struct {
 }
 
 type ControllerClient struct {
-	conn       net.Conn
-	reader     *bufio.Reader
-	responseCh chan string
-	asyncCh    chan AsyncMessage
-	eventCh    chan Event
-	mu         sync.Mutex
+	conn             net.Conn
+	reader           *bufio.Reader
+	responseCh       chan string
+	asyncCh          chan AsyncMessage
+	eventCh          chan Event
+	pendingResponses map[string]chan string
+	mu               sync.Mutex
 }
 
 func NewControllerClient() (*ControllerClient, error) {
@@ -182,11 +184,12 @@ func NewControllerClient() (*ControllerClient, error) {
 	}
 
 	c := &ControllerClient{
-		conn:       conn,
-		reader:     bufio.NewReader(conn),
-		responseCh: make(chan string, 1),
-		asyncCh:    make(chan AsyncMessage, 100),
-		eventCh:    make(chan Event, 100),
+		conn:             conn,
+		reader:           bufio.NewReader(conn),
+		responseCh:       make(chan string, 1),
+		asyncCh:          make(chan AsyncMessage, 100),
+		eventCh:          make(chan Event, 100),
+		pendingResponses: make(map[string]chan string),
 	}
 
 	go c.readLoop()
@@ -210,6 +213,15 @@ func (c *ControllerClient) readLoop() {
 		if msg.Event != "" {
 			c.eventCh <- Event{Type: msg.Event, Data: msg.Data}
 		} else if msg.IsAsync {
+			if msg.CmdID != "" {
+				c.mu.Lock()
+				ch, ok := c.pendingResponses[msg.CmdID]
+				c.mu.Unlock()
+				if ok {
+					ch <- msg.Response
+					continue
+				}
+			}
 			c.asyncCh <- AsyncMessage{Text: msg.Response, CmdID: msg.CmdID}
 		} else {
 			c.responseCh <- msg.Response
@@ -229,6 +241,27 @@ func (c *ControllerClient) Send(cmd string, args ...string) (string, error) {
 
 	resp := <-c.responseCh
 	return resp, nil
+}
+
+func (c *ControllerClient) WaitAsync(cmdID string, timeout time.Duration) (string, error) {
+	ch := make(chan string, 1)
+
+	c.mu.Lock()
+	c.pendingResponses[cmdID] = ch
+	c.mu.Unlock()
+
+	defer func() {
+		c.mu.Lock()
+		delete(c.pendingResponses, cmdID)
+		c.mu.Unlock()
+	}()
+
+	select {
+	case resp := <-ch:
+		return resp, nil
+	case <-time.After(timeout):
+		return "", fmt.Errorf("timeout")
+	}
 }
 
 func (c *ControllerClient) AsyncMessages() <-chan AsyncMessage { return c.asyncCh }

@@ -27,6 +27,13 @@ func NewHandler(n *node.Node) *Handler {
 	executor.Register(NewDownloadCommand(fh))
 	executor.Register(NewUploadCommand(fh))
 
+	// Register built-in commands
+	executor.Register(NewPwdCommand())
+	executor.Register(NewCdCommand())
+	executor.Register(NewLsCommand())
+	executor.Register(NewInfoCommand())
+	executor.Register(NewPsCommand())
+
 	return &Handler{
 		node:     n,
 		executor: executor,

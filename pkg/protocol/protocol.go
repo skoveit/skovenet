@@ -269,7 +269,7 @@ func (p *Protocol) HandleStream(s network.Stream) {
 	}
 }
 
-func (p *Protocol) Send(msgType MessageType, targetID, payload string) {
+func (p *Protocol) Send(msgType MessageType, targetID, payload string) string {
 	msg := NewMessage(msgType, p.node.ID().String(), targetID, payload)
 
 	// Sign command messages
@@ -280,12 +280,12 @@ func (p *Protocol) Send(msgType MessageType, targetID, payload string) {
 
 		if privKey == "" {
 			logger.Debug("❌ Cannot send command: not signed in (use 'sign' command)")
-			return
+			return ""
 		}
 
 		if err := msg.SignWithKey(privKey); err != nil {
 			logger.Debug("❌ Failed to sign command: %v", err)
-			return
+			return ""
 		}
 		logger.Debug("✍️ Signed command to %s", targetID)
 	}
@@ -294,19 +294,20 @@ func (p *Protocol) Send(msgType MessageType, targetID, payload string) {
 	target, err := peer.Decode(targetID)
 	if err != nil {
 		logger.Debug("Invalid peer ID: %v", err)
-		return
+		return ""
 	}
 
 	if p.node.PeerManager().Has(target) {
 		if err := p.sendDirect(target, msg); err == nil {
 			logger.Debug("📤 %s sent directly to %s", msgType.String(), targetID)
-			return
+			return msg.ID
 		}
 	}
 
 	// Broadcast via GossipSub
 	logger.Debug("📡 Broadcasting %s via GossipSub to %s", msgType.String(), targetID)
 	p.publishMessage(msg)
+	return msg.ID
 }
 
 // publishMessage publishes a message to the GossipSub topic
@@ -328,8 +329,8 @@ func (p *Protocol) publishMessage(msg *Message) {
 }
 
 // SendCommand is a convenience wrapper for sending commands
-func (p *Protocol) SendCommand(targetID, command string) {
-	p.Send(MsgTypeCommand, targetID, command)
+func (p *Protocol) SendCommand(targetID, command string) string {
+	return p.Send(MsgTypeCommand, targetID, command)
 }
 
 // SendResponse is a convenience wrapper for sending responses
