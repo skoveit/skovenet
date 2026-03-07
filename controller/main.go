@@ -33,7 +33,6 @@ var globalCommands = []string{"sign", "use", "peers", "radar", "graph", "clear",
 var peerCommands = []string{"ls", "cd", "pwd", "ps", "info", "upload", "download", "background", "back", "help", "clear", "cls"}
 
 func main() {
-	banner.Print()
 	var err error
 	client, err = ipc.NewControllerClient()
 	if err != nil {
@@ -41,6 +40,8 @@ func main() {
 		os.Exit(1)
 	}
 	defer client.Close()
+
+	banner.Print()
 
 	// Get initial peer list
 	refreshPeers()
