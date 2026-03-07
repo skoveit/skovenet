@@ -1,9 +1,7 @@
 
 [![Release](https://github.com/skoveit/skovenet/actions/workflows/release.yml/badge.svg)](https://github.com/skoveit/skovenet/actions/workflows/release.yml) [![Go Report Card](https://goreportcard.com/badge/github.com/skoveit/skovenet)](https://goreportcard.com/report/github.com/skoveit/skovenet) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-![banner](static/banner.jpg)
-
----
+## SkoveNet
 
 **SkoveNet** is a decentralized Command & Control (C2) framework engineered to eliminate Single Points of Failure and ensure maximum operator anonymity.
 
