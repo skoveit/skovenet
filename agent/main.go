@@ -266,8 +266,7 @@ func handleCommand(cmd string, args []string, n *node.Node, proto *protocol.Prot
 		if !proto.HasPrivateKey() {
 			return "error: not signed in. Use 'sign <private_key>' first"
 		}
-		proto.SendCommand(args[0], strings.Join(args[1:], " "))
-		return ""
+		return proto.SendCommand(args[0], strings.Join(args[1:], " "))
 
 	case "quit":
 		return "goodbye"

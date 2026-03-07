@@ -28,7 +28,8 @@ var (
 	graphServer  net.Listener // graph web server
 )
 
-var commands = []string{"sign", "use", "run", "back", "send", "peers", "radar", "graph", "clear", "cls", "id", "help", "quit", "exit", "upload", "download"}
+var globalCommands = []string{"sign", "use", "peers", "radar", "graph", "clear", "cls", "id", "help", "quit", "exit"}
+var peerCommands = []string{"ls", "cd", "pwd", "ps", "info", "upload", "download", "background", "back", "help", "clear", "cls"}
 
 func main() {
 	var err error
@@ -100,6 +101,10 @@ func complete(input string) []string {
 	input = strings.TrimSpace(input)
 	words := strings.Fields(input)
 
+	mu.RLock()
+	selected := selectedPeer
+	mu.RUnlock()
+
 	// Complete commands
 	if len(words) == 0 || (len(words) == 1 && !strings.HasSuffix(input, " ")) {
 		prefix := ""
@@ -107,7 +112,13 @@ func complete(input string) []string {
 			prefix = words[0]
 		}
 		var matches []string
-		for _, cmd := range commands {
+
+		cmds := globalCommands
+		if selected != "" {
+			cmds = peerCommands
+		}
+
+		for _, cmd := range cmds {
 			if strings.HasPrefix(cmd, prefix) {
 				matches = append(matches, cmd)
 			}
@@ -115,9 +126,9 @@ func complete(input string) []string {
 		return matches
 	}
 
-	// Complete peer IDs for 'use' and 'send'
+	// Complete peer IDs for 'use'
 	cmd := words[0]
-	if cmd == "use" || cmd == "send" {
+	if cmd == "use" {
 		mu.RLock()
 		peers := peerList
 		mu.RUnlock()
@@ -130,12 +141,7 @@ func complete(input string) []string {
 		var matches []string
 		for _, p := range peers {
 			if strings.HasPrefix(p, prefix) {
-				// Return full command with peer
-				if cmd == "use" {
-					matches = append(matches, "use "+p)
-				} else {
-					matches = append(matches, strings.Join(words[:len(words)-1], " ")+" "+p)
-				}
+				matches = append(matches, "use "+p)
 			}
 		}
 		return matches
@@ -161,36 +167,11 @@ func execute(input string) {
 			fmt.Printf("Selected peer: %s\n", selectedPeer)
 		}
 
-	case "back":
+	case "back", "background":
 		mu.Lock()
 		selectedPeer = ""
 		mu.Unlock()
 		fmt.Println("Deselected peer")
-
-	case "run":
-		mu.RLock()
-		peer := selectedPeer
-		mu.RUnlock()
-
-		if peer == "" {
-			fmt.Println("No peer selected. Use 'use <peerID>' first")
-			return
-		}
-		if len(args) == 0 {
-			fmt.Println("Usage: run <command>")
-			return
-		}
-		sendArgs := append([]string{peer}, args...)
-		resp, _ := client.Send("send", sendArgs...)
-		fmt.Println(resp)
-
-	case "send":
-		if len(args) < 2 {
-			fmt.Println("Usage: send <peerID> <command>")
-			return
-		}
-		resp, _ := client.Send("send", args...)
-		fmt.Println(resp)
 
 	case "peers":
 		refreshPeers()
@@ -253,7 +234,40 @@ func execute(input string) {
 		}
 
 	default:
-		fmt.Printf("Unknown command: %s (type 'help' for commands)\n", cmd)
+		mu.RLock()
+		peer := selectedPeer
+		mu.RUnlock()
+
+		if peer != "" {
+			// Send the command and get the unique CmdID
+			cmdID, err := client.Send("send", peer, input)
+			if err != nil {
+				fmt.Printf("Error sending command: %v\n", err)
+				return
+			}
+
+			if cmdID == "" {
+				return
+			}
+
+			// Wait for the response with a timeout
+			// Most commands are fast (ls, pwd, etc.), so 10s is plenty.
+			resp, err := client.WaitAsync(cmdID, 10*time.Second)
+			if err != nil {
+				if err.Error() == "timeout" {
+					fmt.Printf("[cmd:%s] Command sent. Output will appear asynchronously.\n", cmdID)
+				} else {
+					fmt.Printf("Error waiting for response: %v\n", err)
+				}
+				return
+			}
+
+			if resp != "" {
+				fmt.Println(resp)
+			}
+		} else {
+			fmt.Printf("Unknown command: %s (type 'help' for commands)\n", cmd)
+		}
 	}
 }
 
@@ -451,10 +465,10 @@ func handleAsyncMessages() {
 		if msg.CmdID != "" {
 			// Show short command ID prefix for correlation
 			shortID := msg.CmdID
-			if len(shortID) > 10 {
-				shortID = shortID[len(shortID)-10:]
+			if len(shortID) > 8 {
+				shortID = shortID[len(shortID)-8:]
 			}
-			fmt.Printf("\n[cmd:%s] %s\n", shortID, msg.Text)
+			fmt.Printf("\n[%s] %s\n", shortID, msg.Text)
 		} else {
 			fmt.Printf("\n%s\n", msg.Text)
 		}
@@ -519,22 +533,36 @@ func handleSign(args []string) {
 }
 
 func printHelp() {
-	fmt.Println(`
-Commands:
+	mu.RLock()
+	selected := selectedPeer
+	mu.RUnlock()
+
+	if selected == "" {
+		fmt.Println(`
+Global Commands:
   sign <key>         Sign in with operator private key
   sign -path <file>  Sign in with key from file
   use [peerID]       Select target peer (TAB completes peer ID)
-  run <command>      Execute command on selected peer
-  back               Deselect peer
-  send <id> <cmd>    Send command to specific peer
   peers              List connected peers
   radar              Scan entire network for all nodes
   graph on           Start topology web viewer
   graph off          Stop topology web viewer
   clear, cls         Clear terminal screen
   id                 Show node ID
-  upload <local> <remote>  Upload file to target
-  download <remote> <local> Download file from target
   help               Show this help
   quit               Exit`)
+	} else {
+		fmt.Println(`
+Peer Commands:
+  ls <path>          List directory contents
+  cd <path>          Change directory
+  pwd                Print current working directory
+  ps                 List running processes
+  info               Show system information
+  upload <src> <dst> Upload file
+  download <src> <dst> Download file
+  background, back   Deselect peer
+  clear, cls         Clear terminal screen
+  help               Show this help`)
+	}
 }
