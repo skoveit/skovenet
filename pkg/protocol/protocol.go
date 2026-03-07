@@ -104,7 +104,7 @@ func (p *Protocol) handlePubSubMessage(data []byte) {
 	switch msg.Type {
 	case MsgTypePing:
 		// Respond to radar ping with pong
-		logger.Debug("📡 Radar ping from %s", msg.Source)
+		logger.Debug("Radar ping from %s", msg.Source)
 		p.sendPong(msg.Source, msg.ID)
 		return
 	case MsgTypePong:
@@ -118,7 +118,7 @@ func (p *Protocol) handlePubSubMessage(data []byte) {
 		return
 	case MsgTypeTopoReq:
 		// Respond with our peer list
-		logger.Debug("🗺️ Topology request from %s", msg.Source)
+		logger.Debug("Topology request from %s", msg.Source)
 		p.sendTopologyResponse(msg.Source, msg.ID)
 		return
 	case MsgTypeTopoRes:
@@ -141,13 +141,13 @@ func (p *Protocol) handlePubSubMessage(data []byte) {
 		// Verify signature for command messages
 		if msg.Type == MsgTypeCommand {
 			if !msg.VerifySignature() {
-				logger.Debug("🚫 Rejected unsigned/invalid command from %s", msg.Source)
+				logger.Warn("Rejected unsigned/invalid command from %s", msg.Source)
 				return
 			}
-			logger.Debug("✅ Signature verified for command from %s", msg.Source)
+			logger.Info("Signature verified for command from %s", msg.Source)
 		}
 
-		logger.Debug("📩 [GossipSub] Received %s", msg.Type.String())
+		logger.Debug("Received %s via GossipSub", msg.Type.String())
 		if err := p.handler.Handle(msg); err != nil {
 			logger.Debug("Error handling command: %v", err)
 		}
@@ -172,7 +172,7 @@ func (p *Protocol) SetPongCallback(cb PongCallback) {
 // Broadcast sends a ping to all nodes in the network (for radar)
 func (p *Protocol) Broadcast(pingID string) {
 	msg := NewMessage(MsgTypePing, p.node.ID().String(), "*", pingID)
-	logger.Debug("📡 Broadcasting radar ping: %s", pingID)
+	logger.Debug("Broadcasting radar ping: %s", pingID)
 	p.publishMessage(msg)
 }
 
@@ -207,7 +207,7 @@ func (p *Protocol) HasPrivateKey() bool {
 // BroadcastTopology sends a topology request to all nodes
 func (p *Protocol) BroadcastTopology(reqID string) {
 	msg := NewMessage(MsgTypeTopoReq, p.node.ID().String(), "*", reqID)
-	logger.Debug("🗺️ Broadcasting topology request: %s", reqID)
+	logger.Debug("Broadcasting topology request: %s", reqID)
 	p.publishMessage(msg)
 }
 
@@ -250,13 +250,13 @@ func (p *Protocol) HandleStream(s network.Stream) {
 		// Verify signature for command messages
 		if msg.Type == MsgTypeCommand {
 			if !msg.VerifySignature() {
-				logger.Debug("🚫 Rejected unsigned/invalid command from %s", msg.Source)
+				logger.Warn("Rejected unsigned/invalid command from %s", msg.Source)
 				return
 			}
-			logger.Debug("✅ Signature verified for command from %s", msg.Source)
+			logger.Info("Signature verified for command from %s", msg.Source)
 		}
 
-		logger.Debug("📩 [Direct] Received %s", msg.Type.String())
+		logger.Debug("Received %s via Direct stream", msg.Type.String())
 		if err := p.handler.Handle(msg); err != nil {
 			logger.Debug("Error handling command: %v", err)
 		}
@@ -279,15 +279,15 @@ func (p *Protocol) Send(msgType MessageType, targetID, payload string) string {
 		p.callbackMu.RUnlock()
 
 		if privKey == "" {
-			logger.Debug("❌ Cannot send command: not signed in (use 'sign' command)")
+			logger.Warn("Cannot send command: not signed in (use 'sign' command)")
 			return ""
 		}
 
 		if err := msg.SignWithKey(privKey); err != nil {
-			logger.Debug("❌ Failed to sign command: %v", err)
+			logger.Error("Failed to sign command: %v", err)
 			return ""
 		}
-		logger.Debug("✍️ Signed command to %s", targetID)
+		logger.Debug("Signed command to %s", targetID)
 	}
 
 	// Try direct connection first if peer is known
@@ -299,13 +299,13 @@ func (p *Protocol) Send(msgType MessageType, targetID, payload string) string {
 
 	if p.node.PeerManager().Has(target) {
 		if err := p.sendDirect(target, msg); err == nil {
-			logger.Debug("📤 %s sent directly to %s", msgType.String(), targetID)
+			logger.Debug("%s sent directly to %s", msgType.String(), targetID)
 			return msg.ID
 		}
 	}
 
 	// Broadcast via GossipSub
-	logger.Debug("📡 Broadcasting %s via GossipSub to %s", msgType.String(), targetID)
+	logger.Debug("Broadcasting %s via GossipSub to %s", msgType.String(), targetID)
 	p.publishMessage(msg)
 	return msg.ID
 }
@@ -353,12 +353,12 @@ func (p *Protocol) SendResponseWithCmdID(targetID, response, cmdID string) {
 
 	if p.node.PeerManager().Has(target) {
 		if err := p.sendDirect(target, msg); err == nil {
-			logger.Debug("📤 response sent directly to %s (cmd: %s)", targetID, cmdID)
+			logger.Debug("Response sent directly to %s (cmd: %s)", targetID, cmdID)
 			return
 		}
 	}
 
-	logger.Debug("📡 Broadcasting response via GossipSub to %s (cmd: %s)", targetID, cmdID)
+	logger.Debug("Broadcasting response via GossipSub to %s (cmd: %s)", targetID, cmdID)
 	p.publishMessage(msg)
 }
 

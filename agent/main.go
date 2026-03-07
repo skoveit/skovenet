@@ -59,7 +59,9 @@ var (
 
 func main() {
 	flag.Parse()
-	logger.SetDebug(*debug)
+	if *debug {
+		logger.SetLevel(logger.LevelDebug)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -67,7 +69,7 @@ func main() {
 	// Initialize node
 	n, err := node.NewNode(ctx)
 	if err != nil {
-		logger.Fatalf("Failed to create node: %v", err)
+		logger.Fatal("Failed to create node: %v", err)
 	}
 
 	// Setup protocol
@@ -103,7 +105,7 @@ func main() {
 	discovery.SuppressMDNSWarnings() // Suppress noisy Windows mDNS warnings
 	disc := discovery.NewMDNSDiscovery(n)
 	if err := disc.Start(); err != nil {
-		logger.Fatalf("Failed to start discovery: %v", err)
+		logger.Fatal("Failed to start discovery: %v", err)
 	}
 
 	// Start IPC server
@@ -112,7 +114,7 @@ func main() {
 		return handleCommand(cmd, args, n, proto, server)
 	})
 	if err != nil {
-		logger.Fatalf("Failed to start IPC: %v", err)
+		logger.Fatal("Failed to start IPC: %v", err)
 	}
 
 	// Forward P2P responses to controller with command ID for correlation
@@ -129,7 +131,7 @@ func main() {
 		}
 	})
 
-	logger.Debug("Node started: %s", n.ID().String())
+	logger.Info("Node started: %s", n.ID().String())
 	logger.Debug("Listening on: %s", n.Addrs())
 
 	// Wait for shutdown

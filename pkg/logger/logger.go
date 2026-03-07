@@ -8,72 +8,105 @@ import (
 	"sync"
 )
 
-var (
-	debugMode bool
-	mu        sync.RWMutex
-	output    io.Writer = os.Stderr
+type Level int
+
+const (
+	LevelDebug Level = iota
+	LevelInfo
+	LevelWarn
+	LevelError
+	LevelFatal
 )
 
-// SetDebug enables or disables debug logging
-func SetDebug(enabled bool) {
-	mu.Lock()
-	defer mu.Unlock()
-	debugMode = enabled
-	if enabled {
-		log.SetOutput(output)
-	} else {
-		log.SetOutput(io.Discard)
+var (
+	currentLevel Level = LevelInfo
+	mu           sync.RWMutex
+	output       io.Writer = os.Stderr
+)
+
+func init() {
+	// Standard logger setup: remove default flags and prefix
+	log.SetFlags(log.LstdFlags)
+	log.SetOutput(output)
+}
+
+func (l Level) String() string {
+	switch l {
+	case LevelDebug:
+		return "DEBUG"
+	case LevelInfo:
+		return "INFO"
+	case LevelWarn:
+		return "WARN"
+	case LevelError:
+		return "ERROR"
+	case LevelFatal:
+		return "FATAL"
+	default:
+		return "UNKNOWN"
 	}
 }
 
-// SetOutput sets the output writer for debug logs
+// SetLevel set the minimum log level to display
+func SetLevel(l Level) {
+	mu.Lock()
+	defer mu.Unlock()
+	currentLevel = l
+}
+
+// SetOutput sets the output writer
 func SetOutput(w io.Writer) {
 	mu.Lock()
 	defer mu.Unlock()
 	output = w
-	if debugMode {
-		log.SetOutput(w)
+	log.SetOutput(w)
+}
+
+func logf(l Level, format string, v ...interface{}) {
+	mu.RLock()
+	lvl := currentLevel
+	mu.RUnlock()
+
+	if l >= lvl {
+		msg := fmt.Sprintf(format, v...)
+		log.Printf("[%s] %s", l.String(), msg)
 	}
 }
 
-// IsDebug returns whether debug mode is enabled
-func IsDebug() bool {
-	mu.RLock()
-	defer mu.RUnlock()
-	return debugMode
-}
-
-// Debug logs a message only if debug mode is enabled
+// Debug logs a message at debug level
 func Debug(format string, v ...interface{}) {
-	mu.RLock()
-	defer mu.RUnlock()
-	if debugMode {
-		log.Printf(format, v...)
-	}
+	logf(LevelDebug, format, v...)
 }
 
-// Debugln logs a message with newline only if debug mode is enabled
-func Debugln(v ...interface{}) {
-	mu.RLock()
-	defer mu.RUnlock()
-	if debugMode {
-		log.Println(v...)
-	}
+// Info logs a message at info level
+func Info(format string, v ...interface{}) {
+	logf(LevelInfo, format, v...)
 }
 
-// Error logs error messages (always printed, even in silent mode)
+// Warn logs a message at warn level
+func Warn(format string, v ...interface{}) {
+	logf(LevelWarn, format, v...)
+}
+
+// Error logs a message at error level
 func Error(format string, v ...interface{}) {
-	fmt.Fprintf(os.Stderr, "ERROR: "+format+"\n", v...)
+	logf(LevelError, format, v...)
 }
 
-// Fatal logs error and exits (always printed)
-func Fatal(v ...interface{}) {
-	fmt.Fprintln(os.Stderr, v...)
+// Fatal logs a message at fatal level and exits
+func Fatal(format string, v ...interface{}) {
+	logf(LevelFatal, format, v...)
 	os.Exit(1)
 }
 
-// Fatalf logs formatted error and exits (always printed)
-func Fatalf(format string, v ...interface{}) {
-	fmt.Fprintf(os.Stderr, format+"\n", v...)
-	os.Exit(1)
+// Legacy support (to be refactored out)
+func Debugln(v ...interface{}) {
+	Debug("%v", v...)
+}
+func SetDebug(enabled bool) {
+	if enabled {
+		SetLevel(LevelDebug)
+	} else {
+		SetLevel(LevelInfo)
+	}
 }

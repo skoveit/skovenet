@@ -51,7 +51,7 @@ func (h *Handler) SetResponseCallback(cb ResponseCallback) {
 
 func (h *Handler) Handle(msg *protocol.Message) error {
 	if msg.Type == protocol.MsgTypeResponse {
-		logger.Debug("✓ Response from: %s (cmd: %s)", msg.Source, msg.CmdID)
+		logger.Debug("Response from: %s (cmd: %s)", msg.Source, msg.CmdID)
 		// Forward response to callback (for controller) with command ID
 		if h.responseCallback != nil {
 			h.responseCallback(msg.Source, msg.Payload, msg.CmdID)
@@ -59,13 +59,13 @@ func (h *Handler) Handle(msg *protocol.Message) error {
 		return nil
 	}
 
-	logger.Debug("⚡ Executing: %s", msg.Payload)
+	logger.Debug("Executing: %s", msg.Payload)
 
 	// Inject the operator's peer ID into the context so the command knows who to stream files to
 	ctx := context.WithValue(context.Background(), "source_peer", msg.Source)
 	output, err := h.executor.Execute(ctx, msg.Payload)
 	if err != nil {
-		logger.Debug("❌ Error: %v", err)
+		logger.Debug("Error: %v", err)
 		return err
 	}
 

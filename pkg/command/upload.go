@@ -84,5 +84,5 @@ func (c *UploadCommand) Execute(ctx context.Context, rawArgs string) (string, er
 		return "", fmt.Errorf("failed during file transfer: %w", err)
 	}
 
-	return fmt.Sprintf("✅ Upload complete: %d bytes transferred to %s", copied, remotePath), nil
+	return fmt.Sprintf("Upload complete: %d bytes transferred to %s", copied, remotePath), nil
 }
