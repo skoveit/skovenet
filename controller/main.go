@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"net"
 	"net/http"
@@ -33,6 +34,9 @@ var globalCommands = []string{"sign", "use", "peers", "radar", "graph", "clear",
 var peerCommands = []string{"ls", "cd", "pwd", "ps", "info", "upload", "download", "background", "back", "help", "clear", "cls"}
 
 func main() {
+	mcpMode := flag.Bool("mcp", false, "Run as MCP stdio server (for AI assistant integration)")
+	flag.Parse()
+
 	var err error
 	client, err = ipc.NewControllerClient()
 	if err != nil {
@@ -40,6 +44,12 @@ func main() {
 		os.Exit(1)
 	}
 	defer client.Close()
+
+	// MCP mode: speak JSON-RPC 2.0 over stdio and exit when stdin closes.
+	if *mcpMode {
+		RunMCPServer(client)
+		return
+	}
 
 	banner.Print()
 
