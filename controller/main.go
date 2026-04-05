@@ -164,8 +164,26 @@ func execute(input string) {
 		if len(args) == 0 {
 			selectPeer()
 		} else {
+			peerID := args[0]
+			refreshPeers() // ensure we have latest list
+
+			mu.RLock()
+			found := false
+			for _, p := range peerList {
+				if p == peerID {
+					found = true
+					break
+				}
+			}
+			mu.RUnlock()
+
+			if !found {
+				fmt.Printf("Peer %s not found\n", peerID)
+				return
+			}
+
 			mu.Lock()
-			selectedPeer = args[0]
+			selectedPeer = peerID
 			mu.Unlock()
 			fmt.Printf("Selected peer: %s\n", selectedPeer)
 		}
@@ -544,14 +562,15 @@ func printHelp() {
 		fmt.Println(`
 Global Commands:
   sign <key>         Sign in with operator private key
-  sign -path <file>  Sign in with key from file
   use [peerID]       Select target peer (TAB completes peer ID)
+  
+  id                 Show node ID
   peers              List connected peers
   radar              Scan entire network for all nodes
   graph on           Start topology web viewer
   graph off          Stop topology web viewer
-  clear, cls         Clear terminal screen
-  id                 Show node ID
+  
+  clear              Clear terminal screen
   help               Show this help
   quit               Exit`)
 	} else {
@@ -565,7 +584,7 @@ Peer Commands:
   upload <src> <dst> Upload file
   download <src> <dst> Download file
   background, back   Deselect peer
-  clear, cls         Clear terminal screen
+  clear              Clear terminal screen
   help               Show this help`)
 	}
 }
