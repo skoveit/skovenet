@@ -95,12 +95,7 @@ Visit https://skoveit.github.io/skoving/projects/skovenet/ for tutorials and doc
 
 ## The Paradigm Shift
 
-Traditional C2 frameworks rely on static, centralized infrastructure. SkoveNet shifts the operational security (OpSec) model entirely to an unstructured peer-to-peer mesh:
-
-- **Infrastructure-less Control:** No teamservers, no redirectors, and no domains to seize. The network itself is the infrastructure.
-- **Cryptographic Trust Model:** Commands are authenticated via Ed25519 signatures rather than network location or TLS certificates. The operator is simply whoever holds the private key.
-- **Self-Healing Topology:** If nodes are discovered or burned by blue teams, the routing graph dynamically recalculates to maintain command flow.
-- **Zero-Attribution:** By propagating commands through GossipSub, the concept of an "origin IP" is eradicated, making upstream operator tracing practically unfeasible.
+SkoveNet redefines OpSec by replacing static, centralized C2 infrastructure with an unstructured, self-healing peer-to-peer mesh. By decoupling control from network location, the network itself becomes the infrastructure, using Ed25519 cryptographic signatures for authentication rather than static IPs or domains. This infrastructure-less model eliminates single points of failure, ensures resilient command flow through dynamic routing, and eradicates the concept of an "origin IP" via decentralized propagation, making operator attribution practically unfeasible.
 
 
 ## Engineering Challenge: NAT Traversal
@@ -110,14 +105,10 @@ Currently, the framework requires manual **Bootstrap/Relay nodes** (`connect` co
 
 We are actively researching the integration of **STUN/TURN** protocols and **DNS-over-HTTPS (DoH)** tunneling to enhance NAT traversal and ensure resilient peer discovery without relying on static relay infrastructure.
 
-## Roadmap [WIP]
-- **Traffic Evasion:** Implement pluggable transports (WebSockets, DNS, ICMP) to mask raw libp2p signatures.
-- **Obfuscation:** Integrate `garble` into sgen for compile-time obfuscation of generated agents.
-- **Dynamic Key Management:** Move from static Ed25519 to a rotating CA model or JWT-based session tokens.
-- **Feature Toggles:** Build-tag support in sgen for conditional compilation (`--tags stealth`).
 
-##
+---
 
-> ⚠️ **Legal Disclaimer:** SkoveNet is intended for 
+
+> **Legal Disclaimer:** SkoveNet is intended for 
 > authorized security research and penetration testing only.
 > Unauthorized use against systems you don't own is illegal.
