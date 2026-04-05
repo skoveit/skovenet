@@ -2,7 +2,7 @@
 *Focus: Closing critical security gaps and protecting operator keys.*
 
 - **Secure Command Signing**: Move all signing logic to the controller; the agent should never see the private key.
-- **Key Management**: Support for loading operator public keys from config/flags instead of hardcoding.
+- **Key Management**: Support for loading operator public keys from config/flags. Implement a rotating CA model or JWT-based session tokens.
 - **Multi-Operator Support**: Allow multiple trusted public keys in the agent.
 - **Message De-duplication**: Implement a time-bounded LRU cache for message IDs to prevent replay/loops.
 
@@ -32,10 +32,12 @@
 ## Phase 4: Stealth & Evasion
 *Focus: Staying under the radar.*
 
-- **Traffic Obfuscation**: Support for WebSocket, DNS, or ICMP transports to bypass DPI.
+- **Traffic Obfuscation**: Support for WebSocket, DNS, or ICMP transports to mask raw libp2p signatures.
 - **Jitter & Sleep**: Implement malleable timing for inter-node communication.
 - **Custom Handshakes**: Encrypt initial libp2p handshakes with rotating shared secrets.
+- **Build-time Obfuscation**: Integrate `garble` into `sgen` for binary obfuscation.
 - **Memory-Only Operation**: Logic for reflective loading or minimal disk footprint.
+- **Feature Toggles**: Build-tag support in `sgen` for conditional compilation (`--tags stealth`).
 
 ---
 
