@@ -16,15 +16,12 @@ Unlike client-server C2 models, SkoveNet implements a decoupled Agent-Controller
 ## Core Features
 - Fully decentralized P2P mesh network
 - Automatic self-healing topology
-- Max 5 neighbors per agent → tiny traffic footprint
+- Tiny traffic footprint 
 - Operator = whoever has the cryptographic secret key
-- Commands signed with Ed25519 → no spoofing
-- End-to-end encrypted (Noise protocol)
-- GossipSub broadcast (fast & reliable)
-- Single binary, zero dependencies – works on Windows, Linux, macOS, ARM
+- End-to-end encrypted
+- Cross-platform, single binary with zero dependencies
 - NAT traversal & hole punching built-in
-- **`sgen`** — standalone agent generator (no Go toolchain required)
-
+- **MCP server** — AI assistant integration
 
 
 ## How It Works
