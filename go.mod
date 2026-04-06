@@ -4,11 +4,17 @@ go 1.25.4
 
 require (
 	github.com/libp2p/go-libp2p v0.45.0
+	github.com/modelcontextprotocol/go-sdk v0.8.0
 	github.com/multiformats/go-multiaddr v0.16.0
 	github.com/peterh/liner v1.2.2
 )
 
-require github.com/Microsoft/go-winio v0.6.2 // indirect
+require github.com/google/jsonschema-go v0.3.0 // indirect
+
+require (
+	github.com/Microsoft/go-winio v0.6.2
+	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
+)
 
 require (
 	github.com/benbjohnson/clock v1.3.5 // indirect

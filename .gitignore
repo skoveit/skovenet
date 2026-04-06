@@ -4,6 +4,7 @@
 **/.cache
 **/*.DS_Store
 **/*.exe
+*plan.md
 .devcontainer
 .idea
 .vscode
