@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/skoveit/skovenet/pkg/banner"
 	"github.com/skoveit/skovenet/pkg/ipc"
+	mcpserver "github.com/skoveit/skovenet/pkg/mcp"
 	"github.com/skoveit/skovenet/static"
 
 	"github.com/peterh/liner"
@@ -33,8 +35,31 @@ var (
 var globalCommands = []string{"sign", "use", "peers", "radar", "graph", "clear", "cls", "id", "help", "quit", "exit"}
 var peerCommands = []string{"ls", "cd", "pwd", "ps", "info", "upload", "download", "background", "back", "help", "clear", "cls"}
 
+// resolveKey reads the private key from the flag value or from a file.
+func resolveKey(keyFlag, keyFileFlag string) string {
+	if keyFlag != "" {
+		return keyFlag
+	}
+	if keyFileFlag != "" {
+		data, err := os.ReadFile(keyFileFlag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to read key file %q: %v\n", keyFileFlag, err)
+			os.Exit(1)
+		}
+		return strings.TrimSpace(string(data))
+	}
+	// Fall back to environment variable
+	if v := os.Getenv("SKOVENET_KEY"); v != "" {
+		return v
+	}
+	return ""
+}
+
 func main() {
-	mcpMode := flag.Bool("mcp", false, "Run as MCP stdio server (for AI assistant integration)")
+	// ── MCP flags (parsed before anything else) ──────────────────────────────
+	mcpMode := flag.Bool("mcp", false, "Run as MCP stdio server for AI agent integration")
+	keyFlag := flag.String("key", "", "Ed25519 private key (base64) – also accepted via $SKOVENET_KEY")
+	keyFileFlag := flag.String("key-file", "", "Path to file containing the Ed25519 private key (base64)")
 	flag.Parse()
 
 	var err error
@@ -45,12 +70,24 @@ func main() {
 	}
 	defer client.Close()
 
-	// MCP mode: speak JSON-RPC 2.0 over stdio and exit when stdin closes.
+	// ── MCP mode: sign in then start the stdio MCP server ────────────────────
 	if *mcpMode {
-		RunMCPServer(client)
+		key := resolveKey(*keyFlag, *keyFileFlag)
+		if key != "" {
+			if _, err := client.Send("sign", key); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to sign in: %v\n", err)
+				os.Exit(1)
+			}
+		}
+		srv := mcpserver.New(client)
+		if err := srv.Run(context.Background()); err != nil {
+			fmt.Fprintf(os.Stderr, "MCP server error: %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 
+	// ── Interactive CLI mode ──────────────────────────────────────────────────
 	banner.Print()
 
 	// Get initial peer list
