@@ -29,14 +29,20 @@ type message struct {
 
 type CommandHandler func(cmd string, args []string) string
 
+// defaultClientWriteTimeout bounds each write to a controller. The agent
+// broadcasts from its mesh-response and peer callbacks, so a controller that
+// stops reading is disconnected instead of stalling them and other controllers.
+const defaultClientWriteTimeout = 10 * time.Second
+
 type AgentServer struct {
-	listener    net.Listener
-	handler     CommandHandler
-	connections map[*agentConnection]bool
-	connMu      sync.RWMutex
-	done        chan struct{}
-	wg          sync.WaitGroup
-	stopOnce    sync.Once
+	listener     net.Listener
+	handler      CommandHandler
+	connections  map[*agentConnection]bool
+	connMu       sync.RWMutex
+	done         chan struct{}
+	wg           sync.WaitGroup
+	stopOnce     sync.Once
+	writeTimeout time.Duration
 }
 
 type agentConnection struct {
@@ -44,9 +50,11 @@ type agentConnection struct {
 	writeMu sync.Mutex
 }
 
-func (c *agentConnection) write(data []byte) error {
+func (c *agentConnection) write(data []byte, timeout time.Duration) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
+	// Best effort: a connection without deadline support keeps working.
+	_ = c.SetWriteDeadline(time.Now().Add(timeout))
 	_, err := c.Write(data)
 	return err
 }
@@ -64,10 +72,11 @@ func NewAgentServer(handler CommandHandler) (*AgentServer, error) {
 // It allows callers to use an isolated endpoint instead of the default socket.
 func NewAgentServerWithListener(listener net.Listener, handler CommandHandler) *AgentServer {
 	s := &AgentServer{
-		listener:    listener,
-		handler:     handler,
-		connections: make(map[*agentConnection]bool),
-		done:        make(chan struct{}),
+		listener:     listener,
+		handler:      handler,
+		connections:  make(map[*agentConnection]bool),
+		done:         make(chan struct{}),
+		writeTimeout: defaultClientWriteTimeout,
 	}
 
 	s.wg.Add(1)
@@ -133,7 +142,7 @@ func (s *AgentServer) handleConn(conn *agentConnection) {
 		response := s.handler(msg.Cmd, msg.Args)
 		resp := message{Response: response}
 		respData, _ := json.Marshal(resp)
-		if err := conn.write(append(respData, '\n')); err != nil {
+		if err := conn.write(append(respData, '\n'), s.writeTimeout); err != nil {
 			return
 		}
 
@@ -170,7 +179,7 @@ func (s *AgentServer) broadcast(msg message) {
 	data = append(data, '\n')
 
 	for _, conn := range connections {
-		if err := conn.write(data); err != nil {
+		if err := conn.write(data, s.writeTimeout); err != nil {
 			conn.Close()
 		}
 	}
