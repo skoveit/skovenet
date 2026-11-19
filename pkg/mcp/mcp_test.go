@@ -3,7 +3,8 @@ package mcp
 import (
 	"context"
 	"encoding/json"
-	"os"
+	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,16 +12,36 @@ import (
 	"github.com/skoveit/skovenet/pkg/ipc"
 )
 
-// mockIPCServer sets up a fake agent for testing.
-// It intercepts "peers" and "id" commands to provide quick synchronous responses.
-func mockIPCServer(t *testing.T) *ipc.AgentServer {
-	// First, try to handle any leftover socket state
-	if ipc.SocketExists() {
-		ipc.CleanupSocket()
-	}
-	os.Remove(ipc.SocketPath)
+type pipeListener struct {
+	conn      net.Conn
+	once      sync.Once
+	done      chan struct{}
+	closeOnce sync.Once
+}
 
-	srv, err := ipc.NewAgentServer(func(cmd string, args []string) string {
+func (l *pipeListener) Accept() (net.Conn, error) {
+	var conn net.Conn
+	l.once.Do(func() { conn = l.conn })
+	if conn != nil {
+		return conn, nil
+	}
+	<-l.done
+	return nil, net.ErrClosed
+}
+func (l *pipeListener) Close() error   { l.closeOnce.Do(func() { close(l.done) }); return nil }
+func (l *pipeListener) Addr() net.Addr { return l.conn.LocalAddr() }
+
+func isolatedIPC(t *testing.T, handler ipc.CommandHandler) (*ipc.AgentServer, *ipc.ControllerClient) {
+	t.Helper()
+	serverConn, clientConn := net.Pipe()
+	server := ipc.NewAgentServerWithListener(&pipeListener{conn: serverConn, done: make(chan struct{})}, handler)
+	client := ipc.NewControllerClientWithConn(clientConn)
+	t.Cleanup(func() { client.Close(); server.Stop() })
+	return server, client
+}
+
+func mockIPCServer(t *testing.T) (*ipc.AgentServer, *ipc.ControllerClient) {
+	return isolatedIPC(t, func(cmd string, args []string) string {
 		switch cmd {
 		case "peers":
 			return `["peer1", "peer2"]`
@@ -29,28 +50,15 @@ func mockIPCServer(t *testing.T) *ipc.AgentServer {
 		case "radar":
 			return `[{"peer_id":"peer1","latency_ms":10}]`
 		case "send":
-			// For run_command tests, the agent immediately returns a cmdID for tracked async.
 			return "cmd_1234"
 		default:
 			return "unknown"
 		}
 	})
-	if err != nil {
-		t.Fatalf("failed to start mock agent: %v", err)
-	}
-
-	time.Sleep(100 * time.Millisecond) // Give the server a moment to bind
-
-	return srv
 }
 
 func setupMCPTest(t *testing.T) (*mcp.Server, *ipc.AgentServer, *ipc.ControllerClient) {
-	agent := mockIPCServer(t)
-
-	client, err := ipc.NewControllerClient()
-	if err != nil {
-		t.Fatalf("failed to connect to mock agent: %v", err)
-	}
+	agent, client := mockIPCServer(t)
 
 	mcpSrv := mcp.NewServer(&mcp.Implementation{
 		Name:    "skovenet-test",
@@ -180,26 +188,13 @@ func TestAsyncTool_RunCommand(t *testing.T) {
 }
 
 func TestTopologyTool_JSONFormat(t *testing.T) {
-	srv, err := ipc.NewAgentServer(func(cmd string, args []string) string {
+	_, client := isolatedIPC(t, func(cmd string, args []string) string {
 		if cmd == "topology" {
 			// Deliberately messy single-line JSON
 			return `{"nodes":["n1","n2"],"edges":[{"from":"n1","to":"n2"}]}`
 		}
 		return ""
 	})
-	if err != nil {
-		t.Fatalf("failed to start mock agent: %v", err)
-	}
-	defer srv.Stop()
-
-	time.Sleep(50 * time.Millisecond)
-
-	client, err := ipc.NewControllerClient()
-	if err != nil {
-		t.Fatalf("failed to connect to mock agent: %v", err)
-	}
-	defer client.Close()
-
 	mcpSrv := mcp.NewServer(&mcp.Implementation{Name: "skovenet-test"}, nil)
 	mcs := New(client)
 	mcs.registerTools(mcpSrv)
