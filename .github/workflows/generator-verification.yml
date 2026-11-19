@@ -1,0 +1,47 @@
+name: Generator verification
+
+# Builds real agents through sgen's Build path. Every target is cross-checked
+# for executable format/architecture; a target is executed (with -h only)
+# solely when it matches the runner's native platform.
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generator-verification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generator:
+    name: sgen ${{ matrix.target }} (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Native: built and executed with -h.
+          - { target: linux/amd64, runner: ubuntu-latest }
+          - { target: linux/arm64, runner: ubuntu-24.04-arm }
+          - { target: darwin/arm64, runner: macos-latest }
+          # Cross-compiled: format/architecture checks only.
+          - { target: linux/386, runner: ubuntu-latest }
+          - { target: linux/arm, runner: ubuntu-latest }
+          - { target: darwin/amd64, runner: ubuntu-latest }
+          - { target: windows/amd64, runner: ubuntu-latest }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Verify generator
+        env:
+          SGEN_SMOKE_TIMEOUT: 25m
+        run: scripts/verify-generator.sh "${{ matrix.target }}"

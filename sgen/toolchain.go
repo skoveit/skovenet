@@ -33,41 +33,26 @@ func toolchainDir() (string, error) {
 	return filepath.Join(home, "toolchain"), nil
 }
 
-// goRoot returns the path to ~/.skovenet/toolchain/go/
-func goRoot() (string, error) {
-	tcDir, err := toolchainDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(tcDir, "go"), nil
+// goRootIn returns the GOROOT of a toolchain extracted into tcDir.
+func goRootIn(tcDir string) string {
+	return filepath.Join(tcDir, "go")
 }
 
-// goBin returns the path to the go binary inside the extracted toolchain.
-func goBin() (string, error) {
-	root, err := goRoot()
-	if err != nil {
-		return "", err
-	}
+// goBinIn returns the go binary of a toolchain extracted into tcDir.
+func goBinIn(tcDir string) string {
 	bin := "go"
 	if runtime.GOOS == "windows" {
 		bin = "go.exe"
 	}
-	return filepath.Join(root, "bin", bin), nil
+	return filepath.Join(goRootIn(tcDir), "bin", bin)
 }
 
-// ensureToolchain extracts the embedded Go toolchain if not already present.
-func ensureToolchain() error {
-	bin, err := goBin()
-	if err != nil {
-		return err
-	}
+// ensureToolchainIn extracts the embedded Go toolchain into tcDir if it is
+// not already present. The CLI uses ~/.skovenet/toolchain (toolchainDir).
+func ensureToolchainIn(tcDir string) error {
+	bin := goBinIn(tcDir)
 	if _, err := os.Stat(bin); err == nil {
 		return nil // already extracted
-	}
-
-	tcDir, err := toolchainDir()
-	if err != nil {
-		return err
 	}
 
 	fmt.Println("[*] Extracting Go toolchain (first run, this may take a moment)...")
@@ -75,6 +60,7 @@ func ensureToolchain() error {
 	// Determine which toolchain archive was embedded.
 	var archive []byte
 	var isZip bool
+	var err error
 	archive, err = toolchainFS.ReadFile("assets/toolchain.zip")
 	if err == nil {
 		isZip = true

@@ -30,6 +30,11 @@ type BuildConfig struct {
 	Arch       string // Target GOARCH
 	PublicKey  string // Base64-encoded Ed25519 public key
 	OutputPath string // Where to write the output binary
+
+	// toolchainDir is where the embedded Go toolchain is extracted.
+	// Empty means ~/.skovenet/toolchain, the CLI default. Tests set it so
+	// they never write to the user's home directory.
+	toolchainDir string
 }
 
 // ValidateConfig checks that the build configuration is valid.
@@ -64,18 +69,18 @@ func Build(cfg *BuildConfig) error {
 
 	// Step 1: Ensure Go toolchain is extracted.
 	fmt.Println("[*] Checking toolchain...")
-	if err := ensureToolchain(); err != nil {
+	tcDir := cfg.toolchainDir
+	if tcDir == "" {
+		var err error
+		if tcDir, err = toolchainDir(); err != nil {
+			return err
+		}
+	}
+	if err := ensureToolchainIn(tcDir); err != nil {
 		return err
 	}
-
-	gobin, err := goBin()
-	if err != nil {
-		return err
-	}
-	root, err := goRoot()
-	if err != nil {
-		return err
-	}
+	gobin := goBinIn(tcDir)
+	root := goRootIn(tcDir)
 
 	// Step 2: Extract source to temp workspace.
 	fmt.Println("[*] Preparing workspace...")
