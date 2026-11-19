@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -30,6 +32,11 @@ type BuildConfig struct {
 	Arch       string // Target GOARCH
 	PublicKey  string // Base64-encoded Ed25519 public key
 	OutputPath string // Where to write the output binary
+
+	// toolchainDir is where the embedded Go toolchain is extracted.
+	// Empty means ~/.skovenet/toolchain, the CLI default. Tests set it so
+	// they never write to the user's home directory.
+	toolchainDir string
 }
 
 // ValidateConfig checks that the build configuration is valid.
@@ -64,18 +71,18 @@ func Build(cfg *BuildConfig) error {
 
 	// Step 1: Ensure Go toolchain is extracted.
 	fmt.Println("[*] Checking toolchain...")
-	if err := ensureToolchain(); err != nil {
+	tcDir := cfg.toolchainDir
+	if tcDir == "" {
+		var err error
+		if tcDir, err = toolchainDir(); err != nil {
+			return err
+		}
+	}
+	if err := ensureToolchainIn(tcDir); err != nil {
 		return err
 	}
-
-	gobin, err := goBin()
-	if err != nil {
-		return err
-	}
-	root, err := goRoot()
-	if err != nil {
-		return err
-	}
+	gobin := goBinIn(tcDir)
+	root := goRootIn(tcDir)
 
 	// Step 2: Extract source to temp workspace.
 	fmt.Println("[*] Preparing workspace...")
@@ -102,11 +109,17 @@ func Build(cfg *BuildConfig) error {
 		"-ldflags", ldflags,
 		"-mod=vendor",
 		"-trimpath",
+		// The workspace is an extracted archive, not a checkout; never let a
+		// repository above TMPDIR fail the build through VCS stamping.
+		"-buildvcs=false",
 		"-o", outPath,
 		"./agent",
 	)
 	cmd.Dir = tmpDir
 	cmd.Env = buildEnv(root, cfg.OS, cfg.Arch, tmpDir)
+	var buildOutput bytes.Buffer
+	cmd.Stdout = &buildOutput
+	cmd.Stderr = &buildOutput
 
 	// Start the build in background and animate while waiting.
 	start := time.Now()
@@ -129,7 +142,7 @@ func Build(cfg *BuildConfig) error {
 	elapsed := time.Since(start)
 
 	if buildErr != nil {
-		return fmt.Errorf("compilation failed: %w", buildErr)
+		return fmt.Errorf("compilation failed: %w\n%s", buildErr, strings.TrimSpace(buildOutput.String()))
 	}
 
 	// Print result.
