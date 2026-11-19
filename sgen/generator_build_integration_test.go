@@ -57,6 +57,9 @@ func smokeTargets(t *testing.T) []string {
 			targets = append(targets, target)
 		}
 	}
+	if len(targets) == 0 {
+		t.Fatal("SGEN_SMOKE_TARGETS must select at least one target")
+	}
 	return targets
 }
 
@@ -176,7 +179,6 @@ func TestGeneratedAgentBuild(t *testing.T) {
 			defer cancel()
 			cmd := exec.CommandContext(ctx, out, "-h")
 			cmd.Dir = t.TempDir()
-			cmd.Env = []string{"HOME=" + cmd.Dir, "TMPDIR=" + cmd.Dir}
 			output, err := cmd.CombinedOutput()
 			if ctx.Err() != nil {
 				t.Fatalf("generated agent -h did not exit: %v", ctx.Err())
