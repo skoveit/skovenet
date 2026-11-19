@@ -1,0 +1,23 @@
+name: Mesh Verification
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mesh:
+    name: Loopback mesh integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Verify protocol, routing, and signed command execution
+        run: ./scripts/verify-mesh.sh
