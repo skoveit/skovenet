@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -18,14 +19,29 @@ type MCPServer struct {
 	client *ipc.ControllerClient
 }
 
-// New creates a new MCPServer backed by the provided IPC client.
+// New creates an MCPServer and takes exclusive ownership of the client's
+// notification streams. The caller must close the client when the server exits.
 func New(client *ipc.ControllerClient) *MCPServer {
+	// MCP returns results through correlated tool calls. Consume unsolicited
+	// notifications so they cannot fill the IPC queues and block tool replies.
+	go func() {
+		for range client.AsyncMessages() {
+		}
+	}()
+	go func() {
+		for range client.Events() {
+		}
+	}()
 	return &MCPServer{client: client}
 }
 
 // Run registers all tools and starts the MCP stdio server.  It blocks until
 // the context is cancelled or the underlying transport closes.
 func (m *MCPServer) Run(ctx context.Context) error {
+	return m.server().Run(ctx, &mcp.StdioTransport{})
+}
+
+func (m *MCPServer) server() *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{
 		Name:    "skovenet",
 		Version: "1.0.0",
@@ -33,7 +49,7 @@ func (m *MCPServer) Run(ctx context.Context) error {
 
 	m.registerTools(srv)
 
-	return srv.Run(ctx, &mcp.StdioTransport{})
+	return srv
 }
 
 // ─── tool argument structs ────────────────────────────────────────────────────
@@ -84,17 +100,22 @@ func textResult(text string) *mcp.CallToolResult {
 // sendAndWait sends a command over IPC and waits for the async response
 // identified by the returned cmdID.  The response is what the agent sends
 // back when the remote peer replies, so it arrives on the async channel.
-func (m *MCPServer) sendAndWait(timeout time.Duration, cmd string, args ...string) (string, error) {
+func (m *MCPServer) sendAndWait(ctx context.Context, timeout time.Duration, cmd string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	// Send the command; the agent returns a cmdID for correlation.
-	cmdID, err := m.client.Send(cmd, args...)
+	cmdID, err := m.client.SendContext(ctx, cmd, args...)
 	if err != nil {
 		return "", fmt.Errorf("ipc send error: %w", err)
 	}
 	if cmdID == "" {
 		return "", fmt.Errorf("agent returned no command ID")
 	}
+	if strings.HasPrefix(cmdID, "error:") {
+		return "", fmt.Errorf("agent rejected command: %s", cmdID)
+	}
 
-	resp, err := m.client.WaitAsync(cmdID, timeout)
+	resp, err := m.client.WaitAsyncContext(ctx, cmdID)
 	if err != nil {
 		return "", fmt.Errorf("waiting for response (cmdID=%s): %w", cmdID, err)
 	}
@@ -111,7 +132,7 @@ func (m *MCPServer) registerTools(srv *mcp.Server) {
 			Description: "List all peers currently connected to the local SkoveNet node.",
 		},
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
-			resp, err := m.client.Send("peers")
+			resp, err := m.client.SendContext(ctx, "peers")
 			if err != nil {
 				return nil, nil, fmt.Errorf("list_peers: %w", err)
 			}
@@ -130,7 +151,7 @@ func (m *MCPServer) registerTools(srv *mcp.Server) {
 			if args.Timeout != "" {
 				timeout = args.Timeout
 			}
-			resp, err := m.client.Send("radar", timeout)
+			resp, err := m.client.SendContext(ctx, "radar", timeout)
 			if err != nil {
 				return nil, nil, fmt.Errorf("radar_scan: %w", err)
 			}
@@ -149,7 +170,7 @@ func (m *MCPServer) registerTools(srv *mcp.Server) {
 			if args.PeerID == "" || args.Command == "" {
 				return nil, nil, fmt.Errorf("run_command: peer_id and command are required")
 			}
-			resp, err := m.sendAndWait(30*time.Second, "send", args.PeerID, args.Command)
+			resp, err := m.sendAndWait(ctx, 30*time.Second, "send", args.PeerID, args.Command)
 			if err != nil {
 				return nil, nil, fmt.Errorf("run_command: %w", err)
 			}
@@ -167,7 +188,7 @@ func (m *MCPServer) registerTools(srv *mcp.Server) {
 			if args.PeerID == "" || args.Path == "" {
 				return nil, nil, fmt.Errorf("list_directory: peer_id and path are required")
 			}
-			resp, err := m.sendAndWait(15*time.Second, "send", args.PeerID, "ls "+args.Path)
+			resp, err := m.sendAndWait(ctx, 15*time.Second, "send", args.PeerID, "ls "+args.Path)
 			if err != nil {
 				return nil, nil, fmt.Errorf("list_directory: %w", err)
 			}
@@ -185,7 +206,7 @@ func (m *MCPServer) registerTools(srv *mcp.Server) {
 			if args.PeerID == "" {
 				return nil, nil, fmt.Errorf("get_system_info: peer_id is required")
 			}
-			resp, err := m.sendAndWait(15*time.Second, "send", args.PeerID, "info")
+			resp, err := m.sendAndWait(ctx, 15*time.Second, "send", args.PeerID, "info")
 			if err != nil {
 				return nil, nil, fmt.Errorf("get_system_info: %w", err)
 			}
@@ -203,7 +224,7 @@ func (m *MCPServer) registerTools(srv *mcp.Server) {
 			if args.PeerID == "" {
 				return nil, nil, fmt.Errorf("list_processes: peer_id is required")
 			}
-			resp, err := m.sendAndWait(15*time.Second, "send", args.PeerID, "ps")
+			resp, err := m.sendAndWait(ctx, 15*time.Second, "send", args.PeerID, "ps")
 			if err != nil {
 				return nil, nil, fmt.Errorf("list_processes: %w", err)
 			}
@@ -221,7 +242,7 @@ func (m *MCPServer) registerTools(srv *mcp.Server) {
 			if args.PeerID == "" || args.LocalPath == "" || args.RemotePath == "" {
 				return nil, nil, fmt.Errorf("upload_file: peer_id, local_path and remote_path are required")
 			}
-			resp, err := m.sendAndWait(120*time.Second, "send", args.PeerID, "upload", args.LocalPath, args.RemotePath)
+			resp, err := m.sendAndWait(ctx, 120*time.Second, "send", args.PeerID, "upload", args.LocalPath, args.RemotePath)
 			if err != nil {
 				return nil, nil, fmt.Errorf("upload_file: %w", err)
 			}
@@ -239,7 +260,7 @@ func (m *MCPServer) registerTools(srv *mcp.Server) {
 			if args.PeerID == "" || args.RemotePath == "" || args.LocalPath == "" {
 				return nil, nil, fmt.Errorf("download_file: peer_id, remote_path and local_path are required")
 			}
-			resp, err := m.sendAndWait(120*time.Second, "send", args.PeerID, "download", args.RemotePath, args.LocalPath)
+			resp, err := m.sendAndWait(ctx, 120*time.Second, "send", args.PeerID, "download", args.RemotePath, args.LocalPath)
 			if err != nil {
 				return nil, nil, fmt.Errorf("download_file: %w", err)
 			}
@@ -256,7 +277,7 @@ func (m *MCPServer) registerTools(srv *mcp.Server) {
 			Description: "Return the local SkoveNet node ID (public key fingerprint).",
 		},
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
-			resp, err := m.client.Send("id")
+			resp, err := m.client.SendContext(ctx, "id")
 			if err != nil {
 				return nil, nil, fmt.Errorf("get_node_id: %w", err)
 			}
@@ -271,7 +292,7 @@ func (m *MCPServer) registerTools(srv *mcp.Server) {
 			Description: "Return the full network topology as JSON (nodes and edges).",
 		},
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
-			resp, err := m.client.Send("topology")
+			resp, err := m.client.SendContext(ctx, "topology")
 			if err != nil {
 				return nil, nil, fmt.Errorf("get_topology: %w", err)
 			}

@@ -1,0 +1,38 @@
+name: IPC/MCP verification
+
+# Runs on every pull request regardless of base branch so stacked PRs also
+# execute the IPC correlation and MCP contract tests.
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipc-mcp-verification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ipc-mcp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Vet IPC and MCP
+        run: |
+          go vet ./pkg/ipc ./pkg/mcp
+          go vet -tags integration ./pkg/ipc
+
+      - name: Race-test IPC correlation and MCP contracts
+        run: go test -race -count=10 -timeout=5m ./pkg/ipc ./pkg/mcp
+
+      - name: Race-test Unix socket integration
+        run: go test -race -tags integration -count=3 -timeout=3m ./pkg/ipc
