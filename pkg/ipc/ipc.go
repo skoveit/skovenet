@@ -2,8 +2,10 @@ package ipc
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"sync"
@@ -205,16 +207,19 @@ type AsyncMessage struct {
 }
 
 type ControllerClient struct {
-	conn             net.Conn
-	reader           *bufio.Reader
-	responseCh       chan string
-	asyncCh          chan AsyncMessage
-	eventCh          chan Event
-	pendingResponses map[string]chan string
-	mu               sync.Mutex
-	sendMu           sync.Mutex
-	done             chan struct{}
-	closeOnce        sync.Once
+	conn              net.Conn
+	reader            *bufio.Reader
+	syncWaiters       []chan string // FIFO; nil marks an abandoned request
+	asyncCh           chan AsyncMessage
+	eventCh           chan Event
+	pendingResponses  map[string]chan string
+	retainUnclaimed   bool // guarded by mu
+	bufferedResponses map[string]string
+	bufferedOrder     []string
+	mu                sync.Mutex
+	sendGate          chan struct{}
+	done              chan struct{}
+	closeOnce         sync.Once
 }
 
 func NewControllerClient() (*ControllerClient, error) {
@@ -233,13 +238,14 @@ func NewControllerClient() (*ControllerClient, error) {
 // NewControllerClientWithConn starts an IPC client and takes ownership of conn.
 func NewControllerClientWithConn(conn net.Conn) *ControllerClient {
 	c := &ControllerClient{
-		conn:             conn,
-		reader:           bufio.NewReader(conn),
-		responseCh:       make(chan string, 1),
-		asyncCh:          make(chan AsyncMessage, 100),
-		eventCh:          make(chan Event, 100),
-		pendingResponses: make(map[string]chan string),
-		done:             make(chan struct{}),
+		conn:              conn,
+		reader:            bufio.NewReader(conn),
+		asyncCh:           make(chan AsyncMessage, 100),
+		eventCh:           make(chan Event, 100),
+		pendingResponses:  make(map[string]chan string),
+		bufferedResponses: make(map[string]string),
+		sendGate:          make(chan struct{}, 1),
+		done:              make(chan struct{}),
 	}
 
 	go c.readLoop()
@@ -270,13 +276,18 @@ func (c *ControllerClient) readLoop() {
 		} else if msg.IsAsync {
 			if msg.CmdID != "" {
 				c.mu.Lock()
-				ch, ok := c.pendingResponses[msg.CmdID]
-				c.mu.Unlock()
-				if ok {
+				ch, claimed := c.pendingResponses[msg.CmdID]
+				if claimed {
 					select {
 					case ch <- msg.Response:
 					default:
 					}
+				} else if c.retainUnclaimed {
+					c.bufferResponse(msg.CmdID, msg.Response)
+				}
+				retained := !claimed && c.retainUnclaimed
+				c.mu.Unlock()
+				if claimed || retained {
 					continue
 				}
 			}
@@ -286,69 +297,224 @@ func (c *ControllerClient) readLoop() {
 				return
 			}
 		} else {
-			select {
-			case c.responseCh <- msg.Response:
-			case <-c.done:
-				return
+			// The agent answers each connection's commands in order, so the
+			// oldest outstanding request owns this reply. Replies to abandoned
+			// requests and unsolicited replies are discarded.
+			c.mu.Lock()
+			if len(c.syncWaiters) > 0 {
+				reply := c.syncWaiters[0]
+				c.syncWaiters = c.syncWaiters[1:]
+				if reply != nil {
+					reply <- msg.Response
+				}
 			}
+			c.mu.Unlock()
 		}
 	}
 }
 
 func (c *ControllerClient) Send(cmd string, args ...string) (string, error) {
-	c.sendMu.Lock()
-	defer c.sendMu.Unlock()
+	return c.SendContext(context.Background(), cmd, args...)
+}
+
+// SendContext serializes requests because synchronous replies have no request
+// ID; they are matched to requests in order. Cancellation while the request is
+// being written closes the connection because a partial line would corrupt
+// framing. Cancellation while awaiting the reply abandons it, keeping the
+// connection usable: the late reply is discarded rather than returned to the
+// next request.
+func (c *ControllerClient) SendContext(ctx context.Context, cmd string, args ...string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	select {
+	case c.sendGate <- struct{}{}:
+		defer func() { <-c.sendGate }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case <-c.done:
+		return "", net.ErrClosed
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+
+	reply := make(chan string, 1)
+	c.mu.Lock()
 	select {
 	case <-c.done:
+		c.mu.Unlock()
 		return "", net.ErrClosed
 	default:
 	}
+	c.syncWaiters = append(c.syncWaiters, reply)
+	c.mu.Unlock()
 
-	msg := message{Cmd: cmd, Args: args}
-	data, _ := json.Marshal(msg)
-	if _, err := c.conn.Write(append(data, '\n')); err != nil {
+	data, _ := json.Marshal(message{Cmd: cmd, Args: args})
+	line := append(data, '\n')
+	// Cancellation interrupts a blocked write with a past deadline. Only an
+	// incomplete line closes the connection; a complete request is abandoned
+	// below so the connection stays usable.
+	interrupted := make(chan struct{})
+	stopCancel := context.AfterFunc(ctx, func() {
+		defer close(interrupted)
+		if c.conn.SetWriteDeadline(time.Unix(1, 0)) != nil {
+			c.Close()
+		}
+	})
+	n, err := c.conn.Write(line)
+	if !stopCancel() {
+		<-interrupted
+		c.conn.SetWriteDeadline(time.Time{})
+	}
+	if n < len(line) {
+		c.Close()
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		if err == nil {
+			err = io.ErrShortWrite
+		}
 		return "", err
 	}
 
 	select {
-	case resp := <-c.responseCh:
+	case resp := <-reply:
 		return resp, nil
-	case <-c.done:
-		select {
-		case resp := <-c.responseCh:
+	case <-ctx.Done():
+		if resp, ok := c.abandonSync(reply); ok {
 			return resp, nil
-		default:
-			return "", net.ErrClosed
 		}
+		return "", ctx.Err()
+	case <-c.done:
+		if resp, ok := c.abandonSync(reply); ok {
+			return resp, nil
+		}
+		return "", net.ErrClosed
+	}
+}
+
+// abandonSync atomically turns a request into a tombstone so its eventual
+// reply is discarded, unless the reply was already delivered.
+func (c *ControllerClient) abandonSync(reply chan string) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i, waiter := range c.syncWaiters {
+		if waiter == reply {
+			c.syncWaiters[i] = nil
+		}
+	}
+	select {
+	case resp := <-reply:
+		return resp, true
+	default:
+		return "", false
 	}
 }
 
 func (c *ControllerClient) WaitAsync(cmdID string, timeout time.Duration) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	response, err := c.WaitAsyncContext(ctx, cmdID)
+	if err == context.DeadlineExceeded {
+		// The interactive controller recognizes this legacy error string.
+		return "", fmt.Errorf("timeout")
+	}
+	return response, err
+}
+
+// WaitAsyncContext waits for a command result. With RetainUnclaimedResults it
+// also accepts a result that arrived before the waiter.
+func (c *ControllerClient) WaitAsyncContext(ctx context.Context, cmdID string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	ch := make(chan string, 1)
 
 	c.mu.Lock()
+	if response, ok := c.bufferedResponses[cmdID]; ok {
+		delete(c.bufferedResponses, cmdID)
+		for i, id := range c.bufferedOrder {
+			if id == cmdID {
+				c.bufferedOrder = append(c.bufferedOrder[:i], c.bufferedOrder[i+1:]...)
+				break
+			}
+		}
+		c.mu.Unlock()
+		return response, nil
+	}
+	if _, ok := c.pendingResponses[cmdID]; ok {
+		c.mu.Unlock()
+		return "", fmt.Errorf("already waiting for command %q", cmdID)
+	}
 	c.pendingResponses[cmdID] = ch
 	c.mu.Unlock()
 
 	defer func() {
 		c.mu.Lock()
-		delete(c.pendingResponses, cmdID)
+		if c.pendingResponses[cmdID] == ch {
+			delete(c.pendingResponses, cmdID)
+		}
 		c.mu.Unlock()
 	}()
 
 	select {
 	case resp := <-ch:
 		return resp, nil
-	case <-time.After(timeout):
-		return "", fmt.Errorf("timeout")
-	case <-c.done:
-		select {
-		case resp := <-ch:
-			return resp, nil
-		default:
-			return "", net.ErrClosed
+	case <-ctx.Done():
+		if response, ok := c.finishWait(cmdID, ch); ok {
+			return response, nil
 		}
+		return "", ctx.Err()
+	case <-c.done:
+		if response, ok := c.finishWait(cmdID, ch); ok {
+			return response, nil
+		}
+		return "", net.ErrClosed
 	}
+}
+
+// finishWait atomically removes a cancelled waiter and checks for a result
+// already delivered to it. Later output is routed to AsyncMessages, or retained
+// when RetainUnclaimedResults is enabled.
+func (c *ControllerClient) finishWait(cmdID string, ch chan string) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.pendingResponses[cmdID] == ch {
+		delete(c.pendingResponses, cmdID)
+	}
+	select {
+	case response := <-ch:
+		return response, true
+	default:
+		return "", false
+	}
+}
+
+// bufferResponse requires mu. Unclaimed results are bounded because results
+// for commands issued by other controllers are broadcast to every connection.
+func (c *ControllerClient) bufferResponse(cmdID, response string) {
+	if _, exists := c.bufferedResponses[cmdID]; exists {
+		return
+	}
+	const maxBufferedResponses = 100
+	if len(c.bufferedOrder) == maxBufferedResponses {
+		delete(c.bufferedResponses, c.bufferedOrder[0])
+		c.bufferedOrder = c.bufferedOrder[1:]
+	}
+	c.bufferedOrder = append(c.bufferedOrder, cmdID)
+	c.bufferedResponses[cmdID] = response
+}
+
+// RetainUnclaimedResults makes command results that arrive before (or after)
+// their waiter available to a later WaitAsync instead of AsyncMessages. Use it
+// when every command result is collected through WaitAsync, as the MCP server
+// does; callers that display AsyncMessages must not, or they would receive a
+// result twice. Retained results are bounded; the oldest are evicted first.
+func (c *ControllerClient) RetainUnclaimedResults() {
+	c.mu.Lock()
+	c.retainUnclaimed = true
+	c.mu.Unlock()
 }
 
 func (c *ControllerClient) AsyncMessages() <-chan AsyncMessage { return c.asyncCh }
