@@ -14,6 +14,7 @@ They use temporary directories for binary smoke checks and preserve reports unde
 - `summary.md`: the toolchain version and completed check results.
 - `tests.log`: Go test JSON events, including failures and skips.
 - `coverage.out` and `coverage.log`: package test coverage data and per-function totals.
+- `test-summary.log`: a readable test inventory showing failures, skips, and incomplete evidence.
 - Separate logs for vet, builds, and CLI smoke checks.
 
 Set `VERIFY_REPORT_DIR` to choose another report directory. CI uploads the reports
@@ -32,6 +33,26 @@ report directories.
 | Build generator with embedded source and toolchain | No | Yes |
 | Vet and test generator | No | Yes |
 | Run generator version and platform listing | No | Yes |
+| Real signed command execution and rejection across loopback mesh nodes | No | Yes |
+| Delivery after losing a relay when an alternate path exists | No | Yes |
+| Generate agents for all seven advertised targets and check format, CPU, and injected key | No | Yes |
+| Run the native generated binary with `-h` | No | Yes |
+| Validate test evidence and summarize passed, failed, and skipped tests | Yes | Yes |
+
+The full command invokes `scripts/verify-mesh.sh` and
+`scripts/verify-generator.sh all`. These suites are required; missing scripts or
+failed commands fail verification. Generated agents are executed only when their
+target matches the host, and only with `-h`. Other targets receive executable
+format/architecture checks. The standalone scripts can also be run separately
+when working on their components.
+
+The report tool is tested by the same command and rejects empty, malformed,
+failed, or incomplete test logs. It reports explicit skips and packages with no
+tests rather than treating them as feature coverage. To inspect a stored log:
+
+```sh
+go run ./tools/verifyreport verification-results/full/tests.log
+```
 
 The CLI smoke checks use help flags and do not start an agent or join a network.
 Integration test assertions live alongside the packages they verify. A successful

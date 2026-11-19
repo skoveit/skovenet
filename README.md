@@ -54,6 +54,14 @@ make sgen
 make controller
 ```
 
+### Verification
+
+Run `make verify-fast` during development and `make verify` for the complete
+automated suite. Reports, coverage, failures, and skipped tests are written to
+`verification-results/`. Full verification includes real loopback mesh flows and
+generation checks for all advertised agent targets. See [VERIFYING.md](VERIFYING.md)
+for scope and prerequisites.
+
 ### Generating Agents
 
 ```bash
