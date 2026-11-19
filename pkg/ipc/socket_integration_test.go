@@ -12,6 +12,16 @@ import (
 func TestIsolatedUnixSocketLifecycle(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "agent.sock")
+	// A caller's TMPDIR may exceed Unix socket pathname limits. Keep the
+	// listener isolated while using a short fallback directory in that case.
+	if len(path) >= 100 {
+		dir, err := os.MkdirTemp("/tmp", "skovenet-ipc-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.RemoveAll(dir) })
+		path = filepath.Join(dir, "agent.sock")
+	}
 	listener, err := net.Listen("unix", path)
 	if err != nil {
 		t.Fatal(err)
