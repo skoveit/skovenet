@@ -24,7 +24,13 @@ GO_DL_URL    := https://go.dev/dl/go$(GO_VERSION).$(HOST_OS)-$(HOST_ARCH).$(GO_D
 SGEN_ASSETS  := sgen/assets
 BIN_DIR      := bin
 
-.PHONY: sgen controller clean help
+.PHONY: sgen controller clean help verify verify-fast $(SGEN_ASSETS)/source.tar.gz
+
+verify: ## Verify features, integration flows, builds, and the generator
+	bash scripts/verify.sh full
+
+verify-fast: ## Run race-enabled package tests, vet, builds, and CLI smoke checks
+	bash scripts/verify.sh fast
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -54,7 +60,8 @@ $(SGEN_ASSETS)/toolchain.$(GO_DL_EXT):
 	curl -fSL -o $(SGEN_ASSETS)/toolchain.$(GO_DL_EXT) "$(GO_DL_URL)"
 	@echo "[✓] Toolchain downloaded"
 
-# Create a source archive with everything needed to build the agent.
+# Always recreate the source archive so edited or deleted source files cannot
+# leave sgen embedding an older agent than the one being verified.
 $(SGEN_ASSETS)/source.tar.gz: vendor
 	@mkdir -p $(SGEN_ASSETS)
 	@echo "[*] Creating agent source archive..."

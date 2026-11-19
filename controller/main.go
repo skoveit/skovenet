@@ -148,6 +148,7 @@ func getPrompt() string {
 }
 
 func complete(input string) []string {
+	trailingSpace := strings.HasSuffix(input, " ") || strings.HasSuffix(input, "\t")
 	input = strings.TrimSpace(input)
 	words := strings.Fields(input)
 
@@ -156,7 +157,7 @@ func complete(input string) []string {
 	mu.RUnlock()
 
 	// Complete commands
-	if len(words) == 0 || (len(words) == 1 && !strings.HasSuffix(input, " ")) {
+	if len(words) == 0 || (len(words) == 1 && !trailingSpace) {
 		prefix := ""
 		if len(words) == 1 {
 			prefix = words[0]
@@ -184,7 +185,7 @@ func complete(input string) []string {
 		mu.RUnlock()
 
 		prefix := ""
-		if len(words) >= 2 && !strings.HasSuffix(input, " ") {
+		if len(words) >= 2 && !trailingSpace {
 			prefix = words[len(words)-1]
 		}
 
@@ -449,14 +450,24 @@ func graphOn() {
 	port := listener.Addr().(*net.TCPAddr).Port
 	url := fmt.Sprintf("http://127.0.0.1:%d", port)
 
-	// Setup HTTP handlers
+	// Start server in background
+	go http.Serve(listener, graphHandler(func() (string, error) {
+		return client.Send("topology")
+	}))
+
+	fmt.Printf("📡 Graph server: %s\n", url)
+	fmt.Println("Use /?interval=5 for auto-refresh every 5s")
+	openBrowser(url)
+}
+
+func graphHandler(topology func() (string, error)) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.Write(static.GraphHTML)
 	})
 	mux.HandleFunc("/api/topology", func(w http.ResponseWriter, r *http.Request) {
-		data, err := client.Send("topology")
+		data, err := topology()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -465,12 +476,7 @@ func graphOn() {
 		w.Write([]byte(data))
 	})
 
-	// Start server in background
-	go http.Serve(listener, mux)
-
-	fmt.Printf("📡 Graph server: %s\n", url)
-	fmt.Println("Use /?interval=5 for auto-refresh every 5s")
-	openBrowser(url)
+	return mux
 }
 
 func graphOff() {

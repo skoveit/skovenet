@@ -17,29 +17,45 @@ func TestWorkingDirectoryCommands(t *testing.T) {
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	canonicalDir, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	out, err := NewCdCommand().Execute(context.Background(), "  "+dir+"  ")
 	if err != nil {
 		t.Fatalf("cd: %v", err)
 	}
-	if out != "Changed directory to: "+canonicalDir {
-		t.Errorf("cd output = %q", out)
+	reported, ok := strings.CutPrefix(out, "Changed directory to: ")
+	if !ok {
+		t.Fatalf("cd output = %q", out)
 	}
+	assertSameDirectory(t, reported, dir)
 	got, err := NewPwdCommand().Execute(context.Background(), "")
-	if err != nil || got != canonicalDir {
-		t.Fatalf("pwd = %q, %v; want %q", got, err, canonicalDir)
+	if err != nil {
+		t.Fatalf("pwd: %v", err)
 	}
+	assertSameDirectory(t, got, dir)
+	beforeFailedChange := got
 
 	if _, err := NewCdCommand().Execute(context.Background(), filepath.Join(root, "missing")); err == nil {
 		t.Error("cd to a missing directory succeeded")
 	}
 	got, err = NewPwdCommand().Execute(context.Background(), "")
-	if err != nil || got != canonicalDir {
+	if err != nil || got != beforeFailedChange {
 		t.Errorf("failed cd changed working directory: pwd = %q, %v", got, err)
+	}
+}
+
+func assertSameDirectory(t *testing.T, got, want string) {
+	t.Helper()
+	actual, err := os.Stat(got)
+	if err != nil {
+		t.Fatalf("stat reported directory %q: %v", got, err)
+	}
+	expected, err := os.Stat(want)
+	if err != nil {
+		t.Fatalf("stat expected directory %q: %v", want, err)
+	}
+	// Windows can report an 8.3 alias while filepath.EvalSymlinks reports the
+	// long name; Unix paths can also have multiple names through symlinks.
+	if !actual.IsDir() || !os.SameFile(actual, expected) {
+		t.Errorf("reported path %q does not identify expected directory %q", got, want)
 	}
 }
 
