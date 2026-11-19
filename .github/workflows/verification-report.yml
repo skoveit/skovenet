@@ -1,0 +1,51 @@
+name: Verification report
+
+# The common verification workflow only tests ./pkg/..., ./agent, ./controller,
+# and ./sgen, so the tools/verifyreport CLI needs its own job to guarantee its
+# tests actually run in CI.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verification-report-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verifyreport:
+    name: verifyreport CLI tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Vet
+        run: go vet ./tools/verifyreport
+
+      - name: Unit tests with the race detector
+        run: go test -race -count=1 ./tools/verifyreport
+
+      - name: Self smoke against real go test -json output
+        shell: bash
+        run: |
+          # Generate a real Go test JSON stream and confirm the reporter parses
+          # it and exits zero only on a complete, passing run.
+          go test -json -count=1 ./tools/verifyreport > reporter-tests.json
+          go run ./tools/verifyreport reporter-tests.json
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verifyreport-smoke
+          path: reporter-tests.json
+          if-no-files-found: warn
