@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -81,6 +82,7 @@ func NewAgentServerWithListener(listener net.Listener, handler CommandHandler) *
 
 func (s *AgentServer) acceptLoop() {
 	defer s.wg.Done()
+	var backoff time.Duration
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
@@ -88,9 +90,26 @@ func (s *AgentServer) acceptLoop() {
 			case <-s.done:
 				return
 			default:
+			}
+			// A closed listener never accepts again; retrying would spin.
+			if errors.Is(err, net.ErrClosed) {
+				logger.Debug("IPC listener closed: %v", err)
+				return
+			}
+			// Back off on other errors, such as descriptor exhaustion, so a
+			// persistent failure does not busy-loop.
+			backoff = min(max(2*backoff, 5*time.Millisecond), time.Second)
+			logger.Debug("IPC accept failed: %v; retrying in %v", err, backoff)
+			timer := time.NewTimer(backoff)
+			select {
+			case <-timer.C:
 				continue
+			case <-s.done:
+				timer.Stop()
+				return
 			}
 		}
+		backoff = 0
 		client := &agentConnection{Conn: conn}
 		s.connMu.Lock()
 		select {
