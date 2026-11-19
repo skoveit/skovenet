@@ -1,6 +1,7 @@
 package command
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -35,12 +36,16 @@ func NewFileHandler(n *node.Node) *FileHandler {
 func (fh *FileHandler) HandleFileStream(s network.Stream) {
 	defer s.Close()
 
-	// Read header length (uint32) and JSON header
-	// For simplicity, we decode the JSON directly from the stream.
-	// Since JSON objects are self-delimiting, decoder.Decode will read just the object.
-	decoder := json.NewDecoder(s)
+	// OpenFileStream writes one newline-terminated JSON header. Consume that
+	// delimiter before treating the remaining stream as arbitrary file bytes.
+	reader := bufio.NewReader(s)
+	headerData, err := reader.ReadBytes('\n')
+	if err != nil {
+		logger.Error("Failed to read file header: %v", err)
+		return
+	}
 	var header FileHeader
-	if err := decoder.Decode(&header); err != nil {
+	if err := json.Unmarshal(headerData, &header); err != nil {
 		logger.Error("Failed to read file header: %v", err)
 		return
 	}
@@ -89,19 +94,13 @@ func (fh *FileHandler) HandleFileStream(s network.Stream) {
 		}
 		defer f.Close()
 
-		// Read the rest from buffer first
-		copied, err := io.Copy(f, decoder.Buffered())
+		// The buffered reader retains any payload bytes read with the header.
+		copied, err := io.Copy(f, reader)
 		if err != nil {
-			logger.Error("Error saving file (buffered): %v", err)
+			logger.Error("Error saving file: %v", err)
 		}
 
-		// Then the rest of the stream
-		copied2, err := io.Copy(f, s)
-		if err != nil {
-			logger.Error("Error saving file (stream): %v", err)
-		}
-
-		logger.Info("Saved %d bytes to %s", copied+copied2, header.Path)
+		logger.Info("Saved %d bytes to %s", copied, header.Path)
 
 	default:
 		logger.Warn("Unknown file stream command: %s", header.Cmd)
