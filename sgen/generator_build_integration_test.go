@@ -128,8 +128,9 @@ func TestGeneratedAgentBuild(t *testing.T) {
 	if err := os.Mkdir(tmp, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Keep the compiler cache and Build's workspace under the test directory.
-	t.Setenv("GOCACHE", filepath.Join(work, "gocache"))
+	// Keep Build's workspace under the test directory. Each target gets its
+	// own GOCACHE below, removed after its subtest: per-target caches share
+	// almost nothing and together exceed small tmpfs mounts.
 	t.Setenv("TMPDIR", tmp)
 	t.Setenv("GOENV", "off")
 	t.Setenv("GOTOOLCHAIN", "local")
@@ -146,12 +147,10 @@ func TestGeneratedAgentBuild(t *testing.T) {
 			if !ok {
 				t.Fatalf("target %q is not os/arch", target)
 			}
-			out := filepath.Join(work, "out", goos+"-"+goarch, "agent")
+			t.Setenv("GOCACHE", t.TempDir())
+			out := filepath.Join(t.TempDir(), "agent")
 			if goos == "windows" {
 				out += ".exe"
-			}
-			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
-				t.Fatal(err)
 			}
 			start := time.Now()
 			err := Build(&BuildConfig{OS: goos, Arch: goarch, PublicKey: pubB64, OutputPath: out, toolchainDir: tcDir})
