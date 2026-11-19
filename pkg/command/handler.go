@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/skoveit/skovenet/pkg/logger"
 	"github.com/skoveit/skovenet/pkg/node"
@@ -50,13 +51,18 @@ func (h *Handler) SetResponseCallback(cb ResponseCallback) {
 }
 
 func (h *Handler) Handle(msg *protocol.Message) error {
-	if msg.Type == protocol.MsgTypeResponse {
+	switch msg.Type {
+	case protocol.MsgTypeResponse:
 		logger.Debug("Response from: %s (cmd: %s)", msg.Source, msg.CmdID)
 		// Forward response to callback (for controller) with command ID
 		if h.responseCallback != nil {
 			h.responseCallback(msg.Source, msg.Payload, msg.CmdID)
 		}
 		return nil
+	case protocol.MsgTypeCommand:
+		// The protocol verifies command signatures before dispatching here.
+	default:
+		return fmt.Errorf("unsupported message type %q", msg.Type)
 	}
 
 	logger.Debug("Executing: %s", msg.Payload)
