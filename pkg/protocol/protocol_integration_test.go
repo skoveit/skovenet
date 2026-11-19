@@ -124,15 +124,16 @@ func receiveIntegrationPayload(t *testing.T, messages <-chan *Message, payload s
 
 func waitIntegrationMesh(t *testing.T, source, target *integrationNode) {
 	t.Helper()
+	payload := "mesh-ready-" + generateID()
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()
 	tick := time.NewTicker(25 * time.Millisecond)
 	defer tick.Stop()
 	for {
-		source.protocol.publishMessage(NewMessage(MsgTypeResponse, source.node.ID().String(), target.node.ID().String(), "mesh-ready"))
+		source.protocol.publishMessage(NewMessage(MsgTypeResponse, source.node.ID().String(), target.node.ID().String(), payload))
 		select {
 		case msg := <-target.handler.messages:
-			if msg.Payload == "mesh-ready" {
+			if msg.Payload == payload && msg.Source == source.node.ID().String() {
 				return
 			}
 		case <-tick.C:
