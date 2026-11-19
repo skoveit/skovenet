@@ -19,11 +19,12 @@ import (
 // (cmd/internal/test2json TestEvent) that this tool needs. Unknown fields are
 // ignored by encoding/json.
 type event struct {
-	Action  string  `json:"Action"`
-	Package string  `json:"Package"`
-	Test    string  `json:"Test"`
-	Elapsed float64 `json:"Elapsed"`
-	Output  string  `json:"Output"`
+	Action     string  `json:"Action"`
+	Package    string  `json:"Package"`
+	Test       string  `json:"Test"`
+	Elapsed    float64 `json:"Elapsed"`
+	Output     string  `json:"Output"`
+	ImportPath string  `json:"ImportPath"`
 }
 
 // Limits that bound memory and keep output readable when logs are large or
@@ -85,12 +86,13 @@ type aggregator struct {
 	totalEvents int
 	malformed   []malformed
 
-	order    []string // package names in first-seen order
-	packages map[string]*pkgState
+	order       []string // package names in first-seen order
+	packages    map[string]*pkgState
+	buildOutput map[string][]string
 }
 
 func newAggregator() *aggregator {
-	return &aggregator{packages: map[string]*pkgState{}}
+	return &aggregator{packages: map[string]*pkgState{}, buildOutput: map[string][]string{}}
 }
 
 func (a *aggregator) pkg(name string) *pkgState {
@@ -137,6 +139,23 @@ func (a *aggregator) processLine(file string, lineNo int, s string) {
 	}
 	if e.Action == "" {
 		a.malformed = append(a.malformed, malformed{file, lineNo, s, "missing Action field"})
+		return
+	}
+	// Go emits build diagnostics separately from test2json events. They use
+	// ImportPath instead of Package and may be harmless linker warnings.
+	if e.Action == "build-output" || e.Action == "build-fail" {
+		if e.ImportPath == "" {
+			a.malformed = append(a.malformed, malformed{file, lineNo, s, "missing ImportPath field"})
+			return
+		}
+		a.totalEvents++
+		if e.Action == "build-output" {
+			a.buildOutput[e.ImportPath] = appendBounded(a.buildOutput[e.ImportPath], e.Output)
+		} else {
+			p := a.pkg(e.ImportPath)
+			p.pkgFail++
+			p.pkgOutput = append(p.pkgOutput, a.buildOutput[e.ImportPath]...)
+		}
 		return
 	}
 	if e.Package == "" {
