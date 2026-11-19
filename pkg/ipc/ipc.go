@@ -32,10 +32,23 @@ type CommandHandler func(cmd string, args []string) string
 type AgentServer struct {
 	listener    net.Listener
 	handler     CommandHandler
-	connections map[net.Conn]bool
+	connections map[*agentConnection]bool
 	connMu      sync.RWMutex
 	done        chan struct{}
 	wg          sync.WaitGroup
+	stopOnce    sync.Once
+}
+
+type agentConnection struct {
+	net.Conn
+	writeMu sync.Mutex
+}
+
+func (c *agentConnection) write(data []byte) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	_, err := c.Write(data)
+	return err
 }
 
 func NewAgentServer(handler CommandHandler) (*AgentServer, error) {
@@ -44,18 +57,24 @@ func NewAgentServer(handler CommandHandler) (*AgentServer, error) {
 		return nil, fmt.Errorf("failed to create socket: %w", err)
 	}
 
+	return NewAgentServerWithListener(listener, handler), nil
+}
+
+// NewAgentServerWithListener serves IPC on listener and takes ownership of it.
+// It allows callers to use an isolated endpoint instead of the default socket.
+func NewAgentServerWithListener(listener net.Listener, handler CommandHandler) *AgentServer {
 	s := &AgentServer{
 		listener:    listener,
 		handler:     handler,
-		connections: make(map[net.Conn]bool),
+		connections: make(map[*agentConnection]bool),
 		done:        make(chan struct{}),
 	}
 
 	s.wg.Add(1)
 	go s.acceptLoop()
 
-	logger.Debug("IPC server started on %s", SocketPath)
-	return s, nil
+	logger.Debug("IPC server started on %s", listener.Addr())
+	return s
 }
 
 func (s *AgentServer) acceptLoop() {
@@ -70,18 +89,26 @@ func (s *AgentServer) acceptLoop() {
 				continue
 			}
 		}
+		client := &agentConnection{Conn: conn}
+		s.connMu.Lock()
+		select {
+		case <-s.done:
+			s.connMu.Unlock()
+			conn.Close()
+			return
+		default:
+		}
+		s.connections[client] = true
 		s.wg.Add(1)
-		go s.handleConn(conn)
+		s.connMu.Unlock()
+		go s.handleConn(client)
 	}
 }
 
-func (s *AgentServer) handleConn(conn net.Conn) {
+func (s *AgentServer) handleConn(conn *agentConnection) {
 	defer s.wg.Done()
 	defer conn.Close()
 
-	s.connMu.Lock()
-	s.connections[conn] = true
-	s.connMu.Unlock()
 	logger.Debug("Controller connected")
 
 	defer func() {
@@ -106,7 +133,9 @@ func (s *AgentServer) handleConn(conn net.Conn) {
 		response := s.handler(msg.Cmd, msg.Args)
 		resp := message{Response: response}
 		respData, _ := json.Marshal(resp)
-		conn.Write(append(respData, '\n'))
+		if err := conn.write(append(respData, '\n')); err != nil {
+			return
+		}
 
 		if msg.Cmd == "quit" {
 			return
@@ -131,21 +160,33 @@ func (s *AgentServer) PushEvent(event, data string) {
 
 func (s *AgentServer) broadcast(msg message) {
 	s.connMu.RLock()
-	defer s.connMu.RUnlock()
+	connections := make([]*agentConnection, 0, len(s.connections))
+	for conn := range s.connections {
+		connections = append(connections, conn)
+	}
+	s.connMu.RUnlock()
 
 	data, _ := json.Marshal(msg)
 	data = append(data, '\n')
 
-	for conn := range s.connections {
-		conn.Write(data)
+	for _, conn := range connections {
+		if err := conn.write(data); err != nil {
+			conn.Close()
+		}
 	}
 }
 
 func (s *AgentServer) Stop() {
-	close(s.done)
-	s.listener.Close()
-	CleanupSocket()
-	s.wg.Wait()
+	s.stopOnce.Do(func() {
+		close(s.done)
+		s.listener.Close()
+		s.connMu.RLock()
+		for conn := range s.connections {
+			conn.Close()
+		}
+		s.connMu.RUnlock()
+		s.wg.Wait()
+	})
 }
 
 // ============================================================================
@@ -171,6 +212,9 @@ type ControllerClient struct {
 	eventCh          chan Event
 	pendingResponses map[string]chan string
 	mu               sync.Mutex
+	sendMu           sync.Mutex
+	done             chan struct{}
+	closeOnce        sync.Once
 }
 
 func NewControllerClient() (*ControllerClient, error) {
@@ -183,6 +227,11 @@ func NewControllerClient() (*ControllerClient, error) {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
 
+	return NewControllerClientWithConn(conn), nil
+}
+
+// NewControllerClientWithConn starts an IPC client and takes ownership of conn.
+func NewControllerClientWithConn(conn net.Conn) *ControllerClient {
 	c := &ControllerClient{
 		conn:             conn,
 		reader:           bufio.NewReader(conn),
@@ -190,18 +239,20 @@ func NewControllerClient() (*ControllerClient, error) {
 		asyncCh:          make(chan AsyncMessage, 100),
 		eventCh:          make(chan Event, 100),
 		pendingResponses: make(map[string]chan string),
+		done:             make(chan struct{}),
 	}
 
 	go c.readLoop()
-	return c, nil
+	return c
 }
 
 func (c *ControllerClient) readLoop() {
+	defer close(c.asyncCh)
+	defer close(c.eventCh)
+	defer c.Close()
 	for {
 		data, err := c.reader.ReadBytes('\n')
 		if err != nil {
-			close(c.asyncCh)
-			close(c.eventCh)
 			return
 		}
 
@@ -211,27 +262,47 @@ func (c *ControllerClient) readLoop() {
 		}
 
 		if msg.Event != "" {
-			c.eventCh <- Event{Type: msg.Event, Data: msg.Data}
+			select {
+			case c.eventCh <- Event{Type: msg.Event, Data: msg.Data}:
+			case <-c.done:
+				return
+			}
 		} else if msg.IsAsync {
 			if msg.CmdID != "" {
 				c.mu.Lock()
 				ch, ok := c.pendingResponses[msg.CmdID]
 				c.mu.Unlock()
 				if ok {
-					ch <- msg.Response
+					select {
+					case ch <- msg.Response:
+					default:
+					}
 					continue
 				}
 			}
-			c.asyncCh <- AsyncMessage{Text: msg.Response, CmdID: msg.CmdID}
+			select {
+			case c.asyncCh <- AsyncMessage{Text: msg.Response, CmdID: msg.CmdID}:
+			case <-c.done:
+				return
+			}
 		} else {
-			c.responseCh <- msg.Response
+			select {
+			case c.responseCh <- msg.Response:
+			case <-c.done:
+				return
+			}
 		}
 	}
 }
 
 func (c *ControllerClient) Send(cmd string, args ...string) (string, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	select {
+	case <-c.done:
+		return "", net.ErrClosed
+	default:
+	}
 
 	msg := message{Cmd: cmd, Args: args}
 	data, _ := json.Marshal(msg)
@@ -239,8 +310,17 @@ func (c *ControllerClient) Send(cmd string, args ...string) (string, error) {
 		return "", err
 	}
 
-	resp := <-c.responseCh
-	return resp, nil
+	select {
+	case resp := <-c.responseCh:
+		return resp, nil
+	case <-c.done:
+		select {
+		case resp := <-c.responseCh:
+			return resp, nil
+		default:
+			return "", net.ErrClosed
+		}
+	}
 }
 
 func (c *ControllerClient) WaitAsync(cmdID string, timeout time.Duration) (string, error) {
@@ -261,12 +341,24 @@ func (c *ControllerClient) WaitAsync(cmdID string, timeout time.Duration) (strin
 		return resp, nil
 	case <-time.After(timeout):
 		return "", fmt.Errorf("timeout")
+	case <-c.done:
+		select {
+		case resp := <-ch:
+			return resp, nil
+		default:
+			return "", net.ErrClosed
+		}
 	}
 }
 
 func (c *ControllerClient) AsyncMessages() <-chan AsyncMessage { return c.asyncCh }
 func (c *ControllerClient) Events() <-chan Event               { return c.eventCh }
-func (c *ControllerClient) Close()                             { c.conn.Close() }
+func (c *ControllerClient) Close() {
+	c.closeOnce.Do(func() {
+		close(c.done)
+		c.conn.Close()
+	})
+}
 
 // ============================================================================
 // HELPERS
