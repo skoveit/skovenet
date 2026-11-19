@@ -22,6 +22,9 @@ type MCPServer struct {
 // New creates an MCPServer and takes exclusive ownership of the client's
 // notification streams. The caller must close the client when the server exits.
 func New(client *ipc.ControllerClient) *MCPServer {
+	// Every tool collects its result with WaitAsync, including results the
+	// agent pushes before returning the command ID.
+	client.RetainUnclaimedResults()
 	// MCP returns results through correlated tool calls. Consume unsolicited
 	// notifications so they cannot fill the IPC queues and block tool replies.
 	go func() {

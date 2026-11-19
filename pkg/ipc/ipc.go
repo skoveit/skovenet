@@ -213,6 +213,7 @@ type ControllerClient struct {
 	asyncCh           chan AsyncMessage
 	eventCh           chan Event
 	pendingResponses  map[string]chan string
+	retainUnclaimed   bool // guarded by mu
 	bufferedResponses map[string]string
 	bufferedOrder     []string
 	mu                sync.Mutex
@@ -275,17 +276,18 @@ func (c *ControllerClient) readLoop() {
 		} else if msg.IsAsync {
 			if msg.CmdID != "" {
 				c.mu.Lock()
-				ch, ok := c.pendingResponses[msg.CmdID]
-				if ok {
+				ch, claimed := c.pendingResponses[msg.CmdID]
+				if claimed {
 					select {
 					case ch <- msg.Response:
 					default:
 					}
-				} else {
+				} else if c.retainUnclaimed {
 					c.bufferResponse(msg.CmdID, msg.Response)
 				}
+				retained := !claimed && c.retainUnclaimed
 				c.mu.Unlock()
-				if ok {
+				if claimed || retained {
 					continue
 				}
 			}
@@ -421,7 +423,8 @@ func (c *ControllerClient) WaitAsync(cmdID string, timeout time.Duration) (strin
 	return response, err
 }
 
-// WaitAsyncContext also accepts a result that arrived before the waiter.
+// WaitAsyncContext waits for a command result. With RetainUnclaimedResults it
+// also accepts a result that arrived before the waiter.
 func (c *ControllerClient) WaitAsyncContext(ctx context.Context, cmdID string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -472,7 +475,8 @@ func (c *ControllerClient) WaitAsyncContext(ctx context.Context, cmdID string) (
 }
 
 // finishWait atomically removes a cancelled waiter and checks for a result
-// already delivered to it. Later output is routed to AsyncMessages instead.
+// already delivered to it. Later output is routed to AsyncMessages, or retained
+// when RetainUnclaimedResults is enabled.
 func (c *ControllerClient) finishWait(cmdID string, ch chan string) (string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -487,8 +491,8 @@ func (c *ControllerClient) finishWait(cmdID string, ch chan string) (string, boo
 	}
 }
 
-// bufferResponse requires mu. Bound unmatched results because interactive
-// controllers may consume AsyncMessages without ever calling WaitAsync.
+// bufferResponse requires mu. Unclaimed results are bounded because results
+// for commands issued by other controllers are broadcast to every connection.
 func (c *ControllerClient) bufferResponse(cmdID, response string) {
 	if _, exists := c.bufferedResponses[cmdID]; exists {
 		return
@@ -500,6 +504,17 @@ func (c *ControllerClient) bufferResponse(cmdID, response string) {
 	}
 	c.bufferedOrder = append(c.bufferedOrder, cmdID)
 	c.bufferedResponses[cmdID] = response
+}
+
+// RetainUnclaimedResults makes command results that arrive before (or after)
+// their waiter available to a later WaitAsync instead of AsyncMessages. Use it
+// when every command result is collected through WaitAsync, as the MCP server
+// does; callers that display AsyncMessages must not, or they would receive a
+// result twice. Retained results are bounded; the oldest are evicted first.
+func (c *ControllerClient) RetainUnclaimedResults() {
+	c.mu.Lock()
+	c.retainUnclaimed = true
+	c.mu.Unlock()
 }
 
 func (c *ControllerClient) AsyncMessages() <-chan AsyncMessage { return c.asyncCh }

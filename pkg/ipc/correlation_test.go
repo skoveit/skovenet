@@ -22,7 +22,49 @@ func (c *writeNotifyingConn) Write(data []byte) (int, error) {
 	return c.Conn.Write(data)
 }
 
-func TestWaitAsyncAcceptsEarlyResult(t *testing.T) {
+// flushReadLoop proves every earlier line has been processed by the read loop:
+// lines are handled in order, so receiving a later event is a barrier.
+func flushReadLoop(t *testing.T, client *ControllerClient, encoder *json.Encoder) {
+	t.Helper()
+	if err := encoder.Encode(message{Event: "barrier", IsAsync: true}); err != nil {
+		t.Fatal(err)
+	}
+	if event := receive(t, client.Events()); event.Type != "barrier" {
+		t.Fatalf("event = %#v", event)
+	}
+}
+
+func assertNoAsyncMessage(t *testing.T, client *ControllerClient) {
+	t.Helper()
+	select {
+	case msg := <-client.AsyncMessages():
+		t.Fatalf("retained result was also delivered to AsyncMessages: %#v", msg)
+	default:
+	}
+}
+
+func TestWaitAsyncAcceptsEarlyRetainedResult(t *testing.T) {
+	t.Parallel()
+	remote, local := net.Pipe()
+	client := NewControllerClientWithConn(local)
+	client.RetainUnclaimedResults()
+	t.Cleanup(client.Close)
+	t.Cleanup(func() { remote.Close() })
+	encoder := json.NewEncoder(remote)
+	if err := encoder.Encode(message{Response: "early-result", CmdID: "cmd-early", IsAsync: true}); err != nil {
+		t.Fatal(err)
+	}
+	flushReadLoop(t, client, encoder)
+	assertNoAsyncMessage(t, client)
+	if got, err := client.WaitAsync("cmd-early", time.Second); err != nil || got != "early-result" {
+		t.Fatalf("WaitAsync = %q, %v", got, err)
+	}
+}
+
+// The interactive controller prints AsyncMessages and also prints what
+// WaitAsync returns, so without opting in an early result must reach exactly
+// one of them.
+func TestDefaultClientDeliversEarlyResultOnlyToAsyncMessages(t *testing.T) {
 	t.Parallel()
 	remote, local := net.Pipe()
 	client := NewControllerClientWithConn(local)
@@ -31,13 +73,11 @@ func TestWaitAsyncAcceptsEarlyResult(t *testing.T) {
 	if err := json.NewEncoder(remote).Encode(message{Response: "early-result", CmdID: "cmd-early", IsAsync: true}); err != nil {
 		t.Fatal(err)
 	}
-	// Consuming the notification proves the read loop processed this result
-	// before WaitAsync is registered; there is no scheduling delay assumption.
-	if msg := receive(t, client.AsyncMessages()); msg.Text != "early-result" {
+	if msg := receive(t, client.AsyncMessages()); msg != (AsyncMessage{Text: "early-result", CmdID: "cmd-early"}) {
 		t.Fatalf("async = %#v", msg)
 	}
-	if got, err := client.WaitAsync("cmd-early", time.Second); err != nil || got != "early-result" {
-		t.Fatalf("WaitAsync = %q, %v", got, err)
+	if got, err := client.WaitAsync("cmd-early", 10*time.Millisecond); err == nil || err.Error() != "timeout" {
+		t.Fatalf("early result delivered twice: WaitAsync = %q, %v", got, err)
 	}
 }
 
@@ -45,14 +85,16 @@ func TestWaitAsyncCorrelatesOutOfOrderResults(t *testing.T) {
 	t.Parallel()
 	remote, local := net.Pipe()
 	client := NewControllerClientWithConn(local)
+	client.RetainUnclaimedResults()
 	t.Cleanup(client.Close)
 	t.Cleanup(func() { remote.Close() })
+	encoder := json.NewEncoder(remote)
 	for _, id := range []string{"second", "first"} {
-		if err := json.NewEncoder(remote).Encode(message{Response: "output-" + id, CmdID: id, IsAsync: true}); err != nil {
+		if err := encoder.Encode(message{Response: "output-" + id, CmdID: id, IsAsync: true}); err != nil {
 			t.Fatal(err)
 		}
-		receive(t, client.AsyncMessages())
 	}
+	flushReadLoop(t, client, encoder)
 	for _, id := range []string{"first", "second"} {
 		if got, err := client.WaitAsync(id, time.Second); err != nil || got != "output-"+id {
 			t.Fatalf("WaitAsync(%q) = %q, %v", id, got, err)
@@ -60,24 +102,28 @@ func TestWaitAsyncCorrelatesOutOfOrderResults(t *testing.T) {
 	}
 }
 
-func TestWaitAsyncBoundsUnmatchedResults(t *testing.T) {
+func TestWaitAsyncBoundsRetainedResults(t *testing.T) {
 	t.Parallel()
 	remote, local := net.Pipe()
 	client := NewControllerClientWithConn(local)
+	client.RetainUnclaimedResults()
 	t.Cleanup(client.Close)
 	t.Cleanup(func() { remote.Close() })
+	encoder := json.NewEncoder(remote)
 	for i := range 101 {
 		id := fmt.Sprintf("cmd-%d", i)
-		if err := json.NewEncoder(remote).Encode(message{Response: id, CmdID: id, IsAsync: true}); err != nil {
+		if err := encoder.Encode(message{Response: id, CmdID: id, IsAsync: true}); err != nil {
 			t.Fatal(err)
 		}
-		receive(t, client.AsyncMessages())
 	}
+	flushReadLoop(t, client, encoder)
 	if _, err := client.WaitAsync("cmd-0", time.Millisecond); err == nil || err.Error() != "timeout" {
 		t.Fatalf("oldest result was not evicted: %v", err)
 	}
-	if got, err := client.WaitAsync("cmd-100", time.Second); err != nil || got != "cmd-100" {
-		t.Fatalf("newest result = %q, %v", got, err)
+	for _, id := range []string{"cmd-1", "cmd-100"} {
+		if got, err := client.WaitAsync(id, time.Second); err != nil || got != id {
+			t.Fatalf("WaitAsync(%q) = %q, %v", id, got, err)
+		}
 	}
 }
 
@@ -105,37 +151,47 @@ func TestWaitAsyncLegacyTimeoutPreservesLateOutput(t *testing.T) {
 
 func TestWaitAsyncCancellationRacingReplyDoesNotLoseOutput(t *testing.T) {
 	t.Parallel()
-	for i := range 30 {
-		t.Run(fmt.Sprintf("race-%d", i), func(t *testing.T) {
-			remote, local := net.Pipe()
-			client := NewControllerClientWithConn(local)
-			t.Cleanup(client.Close)
-			t.Cleanup(func() { remote.Close() })
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			type result struct {
-				text string
-				err  error
-			}
-			done := make(chan result, 1)
-			go func() { text, err := client.WaitAsyncContext(ctx, "cmd-race"); done <- result{text, err} }()
-			if err := json.NewEncoder(remote).Encode(message{Response: "racing-output", CmdID: "cmd-race", IsAsync: true}); err != nil {
-				t.Fatal(err)
-			}
-			cancel()
-			got := receive(t, done)
-			if got.err == nil {
-				if got.text != "racing-output" {
-					t.Fatalf("result = %q", got.text)
+	for _, retain := range []bool{false, true} {
+		for i := range 30 {
+			t.Run(fmt.Sprintf("retain=%t/race-%d", retain, i), func(t *testing.T) {
+				remote, local := net.Pipe()
+				client := NewControllerClientWithConn(local)
+				if retain {
+					client.RetainUnclaimedResults()
 				}
-			} else if errors.Is(got.err, context.Canceled) {
-				if notification := receive(t, client.AsyncMessages()); notification.Text != "racing-output" {
-					t.Fatalf("notification = %#v", notification)
+				t.Cleanup(client.Close)
+				t.Cleanup(func() { remote.Close() })
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				type result struct {
+					text string
+					err  error
 				}
-			} else {
-				t.Fatal(got.err)
-			}
-		})
+				done := make(chan result, 1)
+				go func() { text, err := client.WaitAsyncContext(ctx, "cmd-race"); done <- result{text, err} }()
+				if err := json.NewEncoder(remote).Encode(message{Response: "racing-output", CmdID: "cmd-race", IsAsync: true}); err != nil {
+					t.Fatal(err)
+				}
+				cancel()
+				got := receive(t, done)
+				switch {
+				case got.err == nil:
+					if got.text != "racing-output" {
+						t.Fatalf("result = %q", got.text)
+					}
+				case !errors.Is(got.err, context.Canceled):
+					t.Fatal(got.err)
+				case retain:
+					if text, err := client.WaitAsync("cmd-race", time.Second); err != nil || text != "racing-output" {
+						t.Fatalf("retained result = %q, %v", text, err)
+					}
+				default:
+					if notification := receive(t, client.AsyncMessages()); notification.Text != "racing-output" {
+						t.Fatalf("notification = %#v", notification)
+					}
+				}
+			})
+		}
 	}
 }
 
@@ -143,8 +199,10 @@ func TestWaitAsyncContextCancellation(t *testing.T) {
 	t.Parallel()
 	remote, local := net.Pipe()
 	client := NewControllerClientWithConn(local)
+	client.RetainUnclaimedResults()
 	t.Cleanup(client.Close)
 	t.Cleanup(func() { remote.Close() })
+	encoder := json.NewEncoder(remote)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { _, err := client.WaitAsyncContext(ctx, "cmd"); done <- err }()
@@ -153,10 +211,10 @@ func TestWaitAsyncContextCancellation(t *testing.T) {
 		t.Fatalf("WaitAsyncContext error = %v", err)
 	}
 	// A cancelled waiter must not consume a later result for the same ID.
-	if err := json.NewEncoder(remote).Encode(message{Response: "later-result", CmdID: "cmd", IsAsync: true}); err != nil {
+	if err := encoder.Encode(message{Response: "later-result", CmdID: "cmd", IsAsync: true}); err != nil {
 		t.Fatal(err)
 	}
-	receive(t, client.AsyncMessages())
+	flushReadLoop(t, client, encoder)
 	if got, err := client.WaitAsync("cmd", time.Second); err != nil || got != "later-result" {
 		t.Fatalf("later result = %q, %v", got, err)
 	}
