@@ -7,6 +7,12 @@
 - **Idiomatic Go**: Follow [Effective Go](https://golang.org/doc/effective_go.html) and standard `gofmt` formatting.
 - Always run tests before submitting a Pull Request.
 
+Run `make verify-fast` while developing and `make verify` before opening a PR.
+These commands stop on a failed check and write test logs, coverage, and a summary
+to `verification-results/`. CI runs the fast checks on Linux, macOS, and Windows,
+plus the full integration and generator checks on Linux. See [VERIFYING.md](VERIFYING.md)
+for the check scope and prerequisites.
+
 ## PR
 
 1. **Branching**: Create a feature branch from `main`.
