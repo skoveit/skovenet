@@ -105,11 +105,18 @@ func ensureToolchain() error {
 }
 
 // extractTarGz extracts a gzip-compressed tar archive into destDir.
-// Sanitizes paths to prevent directory traversal.
+// All filesystem operations go through an os.Root, so entries cannot write
+// outside destDir even through pre-existing or archive-created symlinks.
+// Entries with non-local names and symlinks that could escape are skipped.
 func extractTarGz(archive []byte, destDir string) error {
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return err
 	}
+	root, err := os.OpenRoot(destDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
 
 	gr, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
@@ -128,24 +135,22 @@ func extractTarGz(archive []byte, destDir string) error {
 			return fmt.Errorf("tar read error: %w", err)
 		}
 
-		// Sanitize: prevent directory traversal.
-		cleanName := filepath.Clean(hdr.Name)
-		if strings.HasPrefix(cleanName, "..") {
+		cleanName := filepath.Clean(filepath.FromSlash(hdr.Name))
+		if !filepath.IsLocal(cleanName) {
 			continue
 		}
-		target := filepath.Join(destDir, cleanName)
 
 		switch hdr.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, os.FileMode(hdr.Mode)|0o755); err != nil {
+			if err := root.MkdirAll(cleanName, os.FileMode(hdr.Mode).Perm()|0o755); err != nil {
 				return err
 			}
 
 		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			if err := root.MkdirAll(filepath.Dir(cleanName), 0o755); err != nil {
 				return err
 			}
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode))
+			f, err := root.OpenFile(cleanName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode).Perm())
 			if err != nil {
 				return err
 			}
@@ -156,11 +161,15 @@ func extractTarGz(archive []byte, destDir string) error {
 			f.Close()
 
 		case tar.TypeSymlink:
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			linkName, ok := downwardSymlinkTarget(hdr.Linkname)
+			if !ok {
+				continue
+			}
+			if err := root.MkdirAll(filepath.Dir(cleanName), 0o755); err != nil {
 				return err
 			}
-			os.Remove(target) // remove if exists
-			if err := os.Symlink(hdr.Linkname, target); err != nil {
+			root.Remove(cleanName) // remove the link itself if it exists
+			if err := root.Symlink(linkName, cleanName); err != nil {
 				return err
 			}
 		}
@@ -168,12 +177,38 @@ func extractTarGz(archive []byte, destDir string) error {
 	return nil
 }
 
+// downwardSymlinkTarget reports whether an archive symlink target can only
+// resolve beneath the link's own directory. Lexically checking targets that
+// contain ".." is not enough: links such as "a -> ." and "c -> a/../x" each
+// look contained but together resolve outside the destination. Relative
+// targets without ".." elements stay contained no matter how other links in
+// the archive are arranged. The embedded archives contain no symlinks today.
+func downwardSymlinkTarget(linkname string) (string, bool) {
+	target := filepath.FromSlash(linkname)
+	if !filepath.IsLocal(target) {
+		return "", false
+	}
+	for _, elem := range strings.Split(filepath.ToSlash(target), "/") {
+		if elem == ".." {
+			return "", false
+		}
+	}
+	return target, true
+}
+
 // extractZip extracts a zip archive into destDir.
-// Sanitizes paths to prevent directory traversal.
+// All filesystem operations go through an os.Root, so entries cannot write
+// outside destDir even through pre-existing symlinks. Entries with non-local
+// names are skipped.
 func extractZip(archive []byte, destDir string) error {
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return err
 	}
+	root, err := os.OpenRoot(destDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
 
 	zr, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
 	if err != nil {
@@ -181,21 +216,19 @@ func extractZip(archive []byte, destDir string) error {
 	}
 
 	for _, f := range zr.File {
-		// Sanitize: prevent directory traversal.
-		cleanName := filepath.Clean(f.Name)
-		if strings.HasPrefix(cleanName, "..") {
+		cleanName := filepath.Clean(filepath.FromSlash(f.Name))
+		if !filepath.IsLocal(cleanName) {
 			continue
 		}
-		target := filepath.Join(destDir, cleanName)
 
 		if f.FileInfo().IsDir() {
-			if err := os.MkdirAll(target, f.Mode()|0o755); err != nil {
+			if err := root.MkdirAll(cleanName, f.Mode().Perm()|0o755); err != nil {
 				return err
 			}
 			continue
 		}
 
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		if err := root.MkdirAll(filepath.Dir(cleanName), 0o755); err != nil {
 			return err
 		}
 
@@ -204,7 +237,7 @@ func extractZip(archive []byte, destDir string) error {
 			return err
 		}
 
-		dst, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, f.Mode())
+		dst, err := root.OpenFile(cleanName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, f.Mode().Perm())
 		if err != nil {
 			rc.Close()
 			return err
