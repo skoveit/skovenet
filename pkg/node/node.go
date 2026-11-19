@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -68,10 +69,26 @@ func NewNode(ctx context.Context) (*Node, error) {
 		return nil, err
 	}
 
-	// Initialize GossipSub with explicit mesh parameters
-	ps, err := pubsub.New(ctx, h)
+	n, err := NewNodeWithHost(ctx, h)
 	if err != nil {
 		h.Close()
+		return nil, err
+	}
+	return n, nil
+}
+
+// NewNodeWithHost initializes mesh services on an existing libp2p host. The
+// caller retains ownership of h, including when initialization fails, and must
+// cancel ctx, close the node's PubSub, and close h when the node is no longer used.
+// NewNode supplies the standard host configuration; this constructor also lets
+// embedders and integration tests provide a host with explicit network settings.
+func NewNodeWithHost(ctx context.Context, h host.Host) (*Node, error) {
+	if h == nil {
+		return nil, errors.New("node host must not be nil")
+	}
+
+	ps, err := pubsub.New(ctx, h)
+	if err != nil {
 		return nil, err
 	}
 
