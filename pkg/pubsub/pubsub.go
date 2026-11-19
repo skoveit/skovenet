@@ -18,8 +18,8 @@ const (
 
 // GossipSub mesh parameters
 const (
-	GossipSubD   = 6  // Target mesh degree
-	GossipSubDlo = 4  // Lower bound for mesh degree
+	GossipSubD   = 6 // Target mesh degree
+	GossipSubDlo = 4 // Lower bound for mesh degree
 	GossipSubDhi = 8 // Upper bound for mesh degree
 )
 
@@ -76,9 +76,14 @@ func (p *PubSub) Join(topicName string) (*pubsub.Subscription, error) {
 		return sub, nil
 	}
 
-	topic, err := p.ps.Join(topicName)
-	if err != nil {
-		return nil, err
+	topic, exists := p.topics[topicName]
+	if !exists {
+		var err error
+		topic, err = p.ps.Join(topicName)
+		if err != nil {
+			return nil, err
+		}
+		p.topics[topicName] = topic
 	}
 
 	sub, err := topic.Subscribe()
@@ -86,7 +91,6 @@ func (p *PubSub) Join(topicName string) (*pubsub.Subscription, error) {
 		return nil, err
 	}
 
-	p.topics[topicName] = topic
 	p.subs[topicName] = sub
 
 	logger.Debug("Joined topic: %s", topicName)
@@ -102,13 +106,17 @@ func (p *PubSub) Publish(topicName string, data []byte) error {
 	if !exists {
 		// Auto-join if not already joined
 		p.mu.Lock()
-		var err error
-		topic, err = p.ps.Join(topicName)
-		if err != nil {
-			p.mu.Unlock()
-			return err
+		// Another publisher or subscriber may have joined while we waited.
+		topic, exists = p.topics[topicName]
+		if !exists {
+			var err error
+			topic, err = p.ps.Join(topicName)
+			if err != nil {
+				p.mu.Unlock()
+				return err
+			}
+			p.topics[topicName] = topic
 		}
-		p.topics[topicName] = topic
 		p.mu.Unlock()
 	}
 
